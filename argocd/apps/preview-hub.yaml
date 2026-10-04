@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: preview-hub
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cafitac/homelab.git
+    targetRevision: main
+    path: apps/preview-hub
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    # ⚠️ prune 끔 — 레지스트리 · 상태(SQLite) PVC. 프리뷰 환경 namespace(phub-*)는 Argo CD 가 아니라 hub 가 관리한다
+    automated: { prune: false, selfHeal: true }

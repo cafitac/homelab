@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 · 1 · 2 단계 완료, Argo CD(GitOps) — 다음 3 단계(preview-hub)
+- 상태: 0 · 1 · 2 단계 완료, 3 단계 K1~K4 완료 — 다음 K5(preview-hub 전환)
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -162,6 +162,14 @@ homelab/
 
 ### 3 단계 — preview-hub (재설계)
 
+진행 (2026-10-05): 설계 `cafitac/preview-hub` `.dev/features/20261005-kubernetes-runner/design.md`
+
+- [x] K1 k8s 러너(#16) · K2 BuildKit 빌더 + 레지스트리(#17) · K3 bot 실행 방식 · proxy 설정(#18) · 이미지 스크립트(#19)
+- [x] K4 `apps/preview-hub` — hub + bot 사이드카 · 레지스트리(hostPort 127.0.0.1 만) · buildkitd · RBAC · Argo CD
+  - 시험: hub 파드에서 `phub up k4test` → 65 초에 READY(빌드 · postgres · init Job 2 개 · HEALTHY), Traefik 경유 요청은 hub `/auth/verify` 가 401(fail-closed), 같은 namespace 에서 앱 200, 환경 설명 proxy = Traefik, `phub down` 뒤 인벤토리 · namespace · PV 모두 없음
+  - ⚠️ 새 bot 은 `sleep` — 옛 bot 과 같은 PR 코멘트를 폴링하므로 K5 에서 옛 스택을 내린 뒤 켠다
+- [ ] K5 전환: 옛 환경 내림 → 옛 compose 스택 중지 → `preview-hub.cafitac.com` · `*.cafitac.com` DNS 를 homelab 터널로 → 새 bot 켬 → e2e(ai-qa) → colima `preview-hub` 정리(삭제는 확인 후)
+
 - 지금: 환경 = docker compose 프로젝트, Traefik(도커 라벨)이 `phub-*.cafitac.com` 분기
 - 목표: **환경 = namespace `phub-<이름>`**, 서비스마다 Deployment · Service · Ingress, 환경 namespace 마다 쿼터
 - hub 의 runner 를 compose runner 에서 k8s runner(`runner.py` 의 C4 프로토콜 구현 추가)로 — 기존 fake · compose runner 는 유지
@@ -199,8 +207,10 @@ homelab/
 ## 5.1 알려진 노출 (남은 것)
 
 - lima 는 VM 에서 모든 주소로 열린 포트를 Mac 의 모든 인터페이스로 넘긴다. k8s VM 에서는 API(55902) · kubelet(10250) 이 그렇게 열려 있다 — 둘 다 인증서 없이는 401 이라 당장 위험은 낮지만 LAN · tailnet 에 보인다. macOS 방화벽(pf) 규칙으로 막는 것을 검토한다(sudo 필요)
-- ⭐ 새 서비스에 `hostPort` · `LoadBalancer` · `NodePort` 를 쓰지 않는다 — 같은 경로로 Mac 밖에 열린다. 외부 노출은 오직 cloudflared → Traefik(ClusterIP) → Ingress
+- ⭐ 새 서비스에 `hostPort` · `LoadBalancer` · `NodePort` 를 쓰지 않는다. 유일한 예외는 preview-hub 레지스트리의 `hostPort: 5000, hostIP: 127.0.0.1`(iptables 만, lima 가 넘기지 않음을 확인) — 같은 경로로 Mac 밖에 열린다. 외부 노출은 오직 cloudflared → Traefik(ClusterIP) → Ingress
 - colima 쪽 기존 VM(thread-example 등)도 0.0.0.0 으로 여는 포트가 있다(3000 · 8080 · 9090 등). 그 프로젝트를 옮길 때 함께 정리한다
+
+- preview-hub 의 ClusterRole 은 클러스터 전체 namespace · 배포 객체 권한이다(RBAC 은 이름 접두사로 못 좁힌다). 러너는 소유 라벨로만 지우지만, hub 가 뚫리면 다른 namespace 도 바꿀 수 있다 → ValidatingAdmissionPolicy 로 hub 의 쓰기를 `phub-*` 로 제한하는 것을 검토한다
 
 ## 6. 미결 (정해야 할 것)
 

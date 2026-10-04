@@ -19,8 +19,11 @@ metadata:
   name: runner
 spec:
   serviceName: runner
-  # 공식 채점 2 줄이 필요하면 2 로 — 줄마다 dockerd 와 빌드 캐시(PVC)가 따로다. 노드 16 코어에서 2 줄은 14 코어를 예약한다
-  replicas: 1
+  # ⭐ 평소 0 — 7 코어를 독점(static CPU manager)하므로 채점이 없을 때 다른 서비스 · thread-example 측정 몫을 막지 않는다.
+  #    스터디 채점 시간에만 올린다: kubectl -n judge-board scale sts/runner --replicas=1 (끝나면 0).
+  #    Argo CD 는 replicas 를 무시한다(argocd/apps/judge-board.yaml ignoreDifferences) — 손으로 올린 값을 되돌리지 않는다
+  #    공식 채점 2 줄이면 2 — 14 코어라 thread-example 측정과 동시에 돌리지 않는다
+  replicas: 0
   selector:
     matchLabels: { app: runner }
   template:

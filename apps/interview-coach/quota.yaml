@@ -1,0 +1,14 @@
+# 컨테이너 상한 합 약 10.6GiB(embedder 7GiB 가 대부분) + 교체 여유. 실사용(2026-10-05) embedder 4.9GiB · 나머지 합 1GiB 미만
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+spec:
+  hard:
+    requests.cpu: "3"
+    requests.memory: 8Gi
+    # CPU 상한은 동시에 다 쓰는 값이 아니다(embedder 4 · server 2 · 나머지 각 1) — 합만 맞춘다
+    limits.cpu: "12"
+    limits.memory: 14Gi
+    requests.storage: 30Gi
+    persistentvolumeclaims: "4"

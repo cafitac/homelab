@@ -1,0 +1,46 @@
+# PostgreSQL 17 + pgvector. 스키마 app(서버) · knowledge(자료 검색). 같은 namespace 에서만 닿는다(격리 컴포넌트)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+spec:
+  serviceName: db
+  replicas: 1
+  selector:
+    matchLabels: { app: db }
+  template:
+    metadata:
+      labels: { app: db }
+    spec:
+      # ⚠️ 서비스 정보를 환경변수로 주입하지 않는다 — Service server 가 SERVER_PORT=tcp://… 를 만들어 Spring 의 server.port 를 덮었다(2026-10-05)
+      enableServiceLinks: false
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg17
+          envFrom:
+            - secretRef: { name: db-auth }
+          env:
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+            periodSeconds: 5
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 10Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+spec:
+  selector: { app: db }
+  ports: [{ port: 5432, targetPort: 5432 }]

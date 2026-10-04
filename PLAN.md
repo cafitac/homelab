@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 · 1 단계 완료, Argo CD 완료(GitOps) — 다음 2 단계(interview-coach)
+- 상태: 0 · 1 · 2 단계 완료, Argo CD(GitOps) — 다음 3 단계(preview-hub)
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -144,6 +144,15 @@ homelab/
 - monitoring 의 helm 설치 기록 삭제(이제 Argo CD 만 관리)
 
 ### 2 단계 — interview-coach (DB · 모델 캐시)
+
+완료 (2026-10-05):
+
+- 이미지 4 개 `interview-coach-{server,knowledge,embedder,web}:<커밋>` — interview-coach `deploy/k8s-images.sh`
+- Secret: `apps/interview-coach/secrets.sh` 가 Mac Studio 의 `.env` 3 개로 만든다. k8s DB 비밀번호는 새로 만들었다(`db-auth`)
+- 옮기기: DB 만 먼저 띄움 → 옛 web · server · knowledge 정지(쓰기 정지) → `pg_dump` → `pg_restore` → 테이블 34 개 · 642 행 일치 → 나머지 기동 → Traefik 경유 `/login` 200 · `/api/auth/me` 401 → DNS. 덤프는 `/Volumes/TradingData/interview-coach/backups/coach-migrate-k8s-*.dump`
+- 겪은 것: ① Service `server` 가 `SERVER_PORT=tcp://…` 환경변수를 주입해 Spring 이 죽음 → 모든 파드 `enableServiceLinks: false` ② CPU 상한 합이 쿼터를 넘어 server 가 생성 안 됨 → 쿼터 12 ③ knowledge 가 embedder 보다 먼저 떠서 degraded 로 고정 → initContainer 로 embedder 준비를 기다린다
+- 백업 CronJob(04:00 KST · 7 일) 한 번 돌려 2.2MB 덤프 확인
+- 옛 colima 컨테이너 7 개는 정지만(롤백용). ⚠️ 롤백하면 전환 뒤의 쓰기는 옛 DB 에 없다
 
 - postgres(pgvector 17) StatefulSet + PVC, 옛 DB 를 `pg_dump` → 복원
 - embedder(PVC: Hugging Face 캐시) · knowledge · server · web, 비밀값 Secret

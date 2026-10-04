@@ -1,0 +1,57 @@
+# 매일 04:00(서울) DB 전체를 떠 두고 7 일치만 남긴다 — compose 의 backup 컨테이너를 옮긴 것.
+# 되살리기: kubectl -n interview-coach exec -i db-0 -- pg_restore -U coach -d coach --clean --if-exists < <파일>
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backups
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 5Gi } }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: "0 4 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          enableServiceLinks: false
+          containers:
+            - name: backup
+              image: pgvector/pgvector:pg17
+              command:
+                - bash
+                - -c
+                - |
+                  set -euo pipefail
+                  f=/backups/coach-$(date +%Y%m%d-%H%M%S).dump
+                  pg_dump -Fc > "$f.tmp"
+                  # 목차를 읽어 온전한지 확인한 뒤에야 이름을 붙인다 — 깨진 파일이 최신 백업 행세를 하지 않게
+                  pg_restore --list "$f.tmp" > /dev/null
+                  mv "$f.tmp" "$f"
+                  find /backups -name 'coach-*.dump' -mtime +7 -delete
+                  find /backups -name '*.tmp' -mmin +60 -delete
+                  echo "백업 $f ($(du -h "$f" | cut -f1))"
+              env:
+                - { name: PGHOST, value: db }
+                - { name: PGDATABASE, value: coach }
+                - { name: PGUSER, valueFrom: { secretKeyRef: { name: db-auth, key: POSTGRES_USER } } }
+                - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: db-auth, key: POSTGRES_PASSWORD } } }
+                - { name: TZ, value: Asia/Seoul }
+              volumeMounts:
+                - { name: backups, mountPath: /backups }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { cpu: 500m, memory: 256Mi }
+          volumes:
+            - name: backups
+              persistentVolumeClaim: { claimName: backups }

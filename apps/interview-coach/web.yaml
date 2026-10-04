@@ -1,0 +1,48 @@
+# 화면(Next.js). /api/* 는 빌드 때 고정된 http://server:8791 로 넘긴다 — Service 이름이 server 여야 한다
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web }
+    spec:
+      # ⚠️ 서비스 정보를 환경변수로 주입하지 않는다 — Service server 가 SERVER_PORT=tcp://… 를 만들어 Spring 의 server.port 를 덮었다(2026-10-05)
+      enableServiceLinks: false
+      containers:
+        - name: web
+          image: interview-coach-web
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8790 }]
+          readinessProbe:
+            httpGet: { path: /login, port: 8790 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector: { app: web }
+  ports: [{ port: 8790, targetPort: 8790 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+spec:
+  rules:
+    - host: interview.cafitac.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: web, port: { number: 8790 } }

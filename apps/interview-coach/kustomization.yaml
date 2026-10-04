@@ -1,0 +1,22 @@
+# interview.cafitac.com — interview-coach(비공개 저장소). AI 모의 면접.
+# 이미지 갱신: interview-coach 저장소에서 deploy/k8s-images.sh → 출력된 태그를 아래 newTag 에 적는다(네 개 모두 같은 태그)
+# 비밀값: secrets.sh(Mac Studio 에서 실행)가 Mac Studio 의 .env 파일들로 Secret 을 만든다 — 저장소에 없다
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: interview-coach
+resources:
+  - namespace.yaml
+  - quota.yaml
+  - db.yaml
+  - embedder.yaml
+  - knowledge.yaml
+  - server.yaml
+  - web.yaml
+  - backup.yaml
+components:
+  - ../../platform/components/isolation
+images:
+  - { name: interview-coach-server, newTag: 3ae9d89a0ea0 }
+  - { name: interview-coach-knowledge, newTag: 3ae9d89a0ea0 }
+  - { name: interview-coach-embedder, newTag: 3ae9d89a0ea0 }
+  - { name: interview-coach-web, newTag: 3ae9d89a0ea0 }

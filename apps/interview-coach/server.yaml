@@ -1,0 +1,54 @@
+# 면접 서버(Kotlin · Spring). LLM 은 Claude Code CLI(CLAUDE_CODE_OAUTH_TOKEN, Secret server-env)를 하위 프로세스로 부른다
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: server }
+  template:
+    metadata:
+      labels: { app: server }
+    spec:
+      # ⚠️ 서비스 정보를 환경변수로 주입하지 않는다 — Service server 가 SERVER_PORT=tcp://… 를 만들어 Spring 의 server.port 를 덮었다(2026-10-05)
+      enableServiceLinks: false
+      containers:
+        - name: server
+          image: interview-coach-server
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef: { name: server-env }
+          env:
+            - { name: DATABASE_URL, value: "jdbc:postgresql://db:5432/coach?currentSchema=app" }
+            - { name: DATABASE_USERNAME, valueFrom: { secretKeyRef: { name: db-auth, key: POSTGRES_USER } } }
+            - { name: DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: db-auth, key: POSTGRES_PASSWORD } } }
+            - { name: KNOWLEDGE_URL, value: "http://knowledge:8792" }
+            - { name: CLAUDE_BIN, value: /home/app/.local/bin/claude }
+            - { name: TZ, value: Asia/Seoul }
+          ports: [{ containerPort: 8791 }]
+          # 로그인 전에는 401 이 정상이다 — 살아 있는지만 본다
+          startupProbe:
+            tcpSocket: { port: 8791 }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket: { port: 8791 }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { cpu: "2", memory: 1Gi }
+      volumes:
+        # Claude CLI 작업 폴더(CLAUDE_WORKDIR=/tmp/...)
+        - name: tmp
+          emptyDir: { sizeLimit: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: server
+spec:
+  selector: { app: server }
+  ports: [{ port: 8791, targetPort: 8791 }]

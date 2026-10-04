@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: interview-coach
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cafitac/homelab.git
+    targetRevision: main
+    path: apps/interview-coach
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    # ⚠️ prune 을 끈다 — DB(StatefulSet) · PVC 가 실수로 지워지면 데이터가 사라진다. 지울 때는 사람이 한다
+    automated: { prune: false, selfHeal: true }

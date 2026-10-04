@@ -1,0 +1,55 @@
+# 자료 저장 · 쪼개기 · 하이브리드 검색(Kotlin). 브라우저는 부르지 않는다 — server 만 부른다
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: knowledge }
+  template:
+    metadata:
+      labels: { app: knowledge }
+    spec:
+      # ⚠️ 서비스 정보를 환경변수로 주입하지 않는다 — Service server 가 SERVER_PORT=tcp://… 를 만들어 Spring 의 server.port 를 덮었다(2026-10-05)
+      enableServiceLinks: false
+      # ⭐ embedder 가 준비된 뒤에 뜬다 — knowledge 는 시작할 때 한 번 embedder 를 확인하고, 실패하면 「치명적」으로 기억해
+      #    재시작 전까지 degraded 로 남는다(2026-10-05 첫 기동에서 겪었다). compose 의 depends_on: service_healthy 를 옮긴 것
+      initContainers:
+        - name: wait-embedder
+          image: busybox:1.37
+          command: ["sh", "-c", "until wget -qO- http://embedder:8793/health | grep -q '\"ready\":true'; do echo embedder 대기; sleep 5; done"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 50m, memory: 32Mi }
+      containers:
+        - name: knowledge
+          image: interview-coach-knowledge
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef: { name: knowledge-env }
+          env:
+            # .env 의 값보다 이것이 이긴다(env 가 envFrom 보다 우선)
+            - { name: KNOWLEDGE_DB_URL, value: "jdbc:postgresql://db:5432/coach" }
+            - { name: KNOWLEDGE_DB_USER, valueFrom: { secretKeyRef: { name: db-auth, key: POSTGRES_USER } } }
+            - { name: KNOWLEDGE_DB_PASSWORD, valueFrom: { secretKeyRef: { name: db-auth, key: POSTGRES_PASSWORD } } }
+            - { name: EMBEDDER_URL, value: "http://embedder:8793" }
+          ports: [{ containerPort: 8792 }]
+          startupProbe:
+            httpGet: { path: /health, port: 8792 }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health, port: 8792 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 384Mi }
+            limits: { cpu: "1", memory: 768Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge
+spec:
+  selector: { app: knowledge }
+  ports: [{ port: 8792, targetPort: 8792 }]

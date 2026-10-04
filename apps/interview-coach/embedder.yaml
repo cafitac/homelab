@@ -1,0 +1,59 @@
+# 임베딩 계산(Python · CPU torch). 모델 캐시(약 1.2GB)는 PVC — 첫 기동에 Hugging Face 에서 내려받는다
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hf-cache
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 5Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: embedder
+spec:
+  replicas: 1
+  # 7GiB 짜리를 두 개 겹쳐 띄우지 않는다(쿼터 · PVC RWO)
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: embedder }
+  template:
+    metadata:
+      labels: { app: embedder }
+    spec:
+      # ⚠️ 서비스 정보를 환경변수로 주입하지 않는다 — Service server 가 SERVER_PORT=tcp://… 를 만들어 Spring 의 server.port 를 덮었다(2026-10-05)
+      enableServiceLinks: false
+      containers:
+        - name: embedder
+          image: interview-coach-embedder
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef: { name: embedder-env }
+          env:
+            - { name: HF_HOME, value: /models }
+          ports: [{ containerPort: 8793 }]
+          # 모델 내려받기 · 예열에 몇 분 걸린다
+          startupProbe:
+            httpGet: { path: /health, port: 8793 }
+            periodSeconds: 15
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health, port: 8793 }
+            periodSeconds: 15
+          volumeMounts:
+            - { name: models, mountPath: /models }
+          resources:
+            # 계산 중 4.3GiB 까지 올라간다(interview-coach bef3ecf)
+            requests: { cpu: 500m, memory: 3Gi }
+            limits: { cpu: "4", memory: 7Gi }
+      volumes:
+        - name: models
+          persistentVolumeClaim: { claimName: hf-cache }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: embedder
+spec:
+  selector: { app: embedder }
+  ports: [{ port: 8793, targetPort: 8793 }]

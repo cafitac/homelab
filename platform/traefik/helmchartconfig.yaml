@@ -8,6 +8,14 @@ metadata:
   name: traefik
   namespace: kube-system
 spec:
+  # ⭐ ClusterIP 라 Ingress status 에 주소가 채워지지 않고, Argo CD 는 그런 Ingress 를 계속 Progressing 으로 본다.
+  #    Traefik 이 Ingress 마다 대표 주소(실제 경로인 터널 이름)를 적게 한다 — 접속에는 쓰이지 않는 표시용이다
   valuesContent: |-
     service:
       type: ClusterIP
+    providers:
+      kubernetesIngress:
+        publishedService:
+          enabled: false
+    additionalArguments:
+      - --providers.kubernetesingress.ingressendpoint.hostname=tunnel.homelab

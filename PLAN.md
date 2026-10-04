@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 ~ 4 · 6 단계(정리) 완료 — 5 단계(thread-example) 진행 중: 준비(디스크 1TB · static CPU manager · judge runner 평소 0) · P12-01 · P12-14 완료
+- 상태: 0 ~ 4 · 6 단계(정리) 완료 — 5 단계(thread-example) 진행 중: 준비(디스크 1TB · static CPU manager · judge runner 평소 0) · P12-01 · P12-14 · P12-13 완료
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -206,7 +206,8 @@ homelab/
 - P12-01 이미지 · SIGTERM — graceful 상한 20s(< terminationGracePeriodSeconds 30s), 비 root (thread-example#29)
 - P12-14 `deploy/k8s` Kustomize 골격 — namespace `thread-example`(6 코어 / 10Gi) · `-edge`(2 / 6Gi) · `-ops`(1 / 1Gi), 쿼터 · 격리 (thread-example#30)
 - Argo CD Application `thread-example` — 비공개 저장소를 읽기 전용 배포 키로(`argocd/set-repo-key.sh`), 통합 브랜치 `agent/stage4-db-foundation` 을 따라간다
-- 다음: P12-13(postgres) → P12-03 · 08(app) → P12-04(gateway · Ingress) → P12-06 → P12-05 → 이전
+- P12-13 postgres StatefulSet · PVC(`local-path-retain`, 120Gi) — 옛 DB 를 pg_basebackup 으로 무중단 물리 복사(26GB, 시점 사본. 이전 때 다시) (thread-example#31)
+- 다음: P12-03 · 08(app) → P12-04(gateway · Ingress) → P12-06 → P12-05 → 이전
 
 ### 6 단계 — 정리
 

@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 ~ 4 단계 완료 — 다음 6 단계 정리(사용자: 4 단계 뒤 한 번에), 그 뒤 5 단계(thread-example)
+- 상태: 0 ~ 4 · 6 단계(정리) 완료 — 남은 것 5 단계(thread-example)
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -202,6 +202,15 @@ homelab/
 - 그때까지는 colima `thread-example` 프로필을 유지한다(이미 SSD · 300GB). 최종 목표가 「전부 k8s」이므로 단계 12 를 미루지 않고 이 이전에 맞춰 당긴다.
 
 ### 6 단계 — 정리
+
+완료 (2026-10-05, 사용자 확인 후):
+
+- colima `judge`(judge-board · interview-coach · portfolio-hub 옛 컨테이너) 삭제 + 외장 SSD 의 VM 디스크 28GB 삭제
+- colima `preview-hub` 는 3 단계에서 삭제(본체 15GB)
+- Cloudflare 터널 `judge-board` · `interview-coach` · `portfolio-hub` · `preview-hub` 삭제, 쓰지 않던 `board.cafitac.com` 레코드 삭제
+- 남긴 것: 외장 SSD 의 옛 데이터 폴더(db · 이전 직전 덤프 · `.env` 원본), Mac Studio `~/Project/interview-coach`(Secret 원본 `.env`)
+- ⚠️ 기본 `colima` 프로필은 업무용(thread-example 스크립트에 명시) — 정리 대상이 아니다
+- 남은 colima: k8s(전부) · thread-example 계열(5 단계) · puri(사용자 프로젝트 아님) · earlypay-tests(업무)
 
 - 옮긴 프로젝트의 colima 프로필 · 터널 삭제, 본체 디스크의 `default`(31GB) · preview-hub 디스크 정리(삭제는 사용자 확인 후)
 - 경보 수신처 연결(사용자가 창구를 정하면)

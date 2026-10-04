@@ -4,4 +4,5 @@ kind: Kustomization
 resources:
   - namespaces/platform.yaml
   - traefik/helmchartconfig.yaml
+  - storage/local-path-retain.yaml
   - cloudflared

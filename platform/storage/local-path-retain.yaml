@@ -1,0 +1,11 @@
+# ⭐ DB 용 저장소 클래스. 기본 local-path 와 같되 reclaimPolicy 가 Retain 이다.
+#    기본(Delete)은 PVC 를 지우면 PV 와 노드의 데이터 디렉터리까지 지운다 — StatefulSet 을 잘못 지우고 PVC 를 정리하는 순간 DB 가 사라진다.
+#    Retain 은 PVC 가 지워져도 PV 가 Released 로 남고 데이터 디렉터리도 그대로다. 지우는 건 사람이 한다.
+# 데이터 위치: VM 의 /var/lib/rancher/k3s/storage/<pv>_<ns>_<pvc> — VM 디스크가 외장 SSD 에 있다.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path-retain
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer

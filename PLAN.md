@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 ~ 4 · 6 단계(정리) 완료 — 5 단계(thread-example) 진행 중: 준비(디스크 1TB · static CPU manager · judge runner 평소 0) · P12-01 · P12-14 · P12-13 · P12-03 · 08 · P12-04 완료
+- 상태: 0 ~ 4 · 6 단계(정리) 완료 — 5 단계(thread-example) 진행 중: 준비(디스크 1TB · static CPU manager · judge runner 평소 0) · P12-01 · P12-14 · P12-13 · P12-03 · 08 · P12-04 · P12-06 완료
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -209,7 +209,8 @@ homelab/
 - P12-13 postgres StatefulSet · PVC(`local-path-retain`, 120Gi) — 옛 DB 를 pg_basebackup 으로 무중단 물리 복사(26GB, 시점 사본. 이전 때 다시) (thread-example#31)
 - P12-03 · 08 app Deployment(maxSurge 1) · probe 셋 — 쿼터를 8 코어 / 14Gi 로(측정 예산 6 / 10Gi + 교체 여유 app 하나) (thread-example#32)
 - P12-04 gateway(nginx) · Service · NetworkPolicy(edge → gateway:8080 만) (thread-example#33). Ingress(threads.cafitac.com → 콘솔)는 콘솔과 함께 P12-05 로
-- 다음: P12-06 → P12-05(콘솔 · 봇 · Ingress) → 이전
+- P12-06 코어 독점 vs CFS 상한 — 같은 2 코어에서 CFS 상한은 쓰로틀 69 ~ 78% · p99 3 ~ 6 배 · 처리량 절반, 독점은 쓰로틀 0 (thread-example#34)
+- 다음: P12-05(콘솔 · 봇 · Ingress) → 이전
 
 ### 6 단계 — 정리
 

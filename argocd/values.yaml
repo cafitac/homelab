@@ -7,13 +7,15 @@ configs:
     # TLS 는 Cloudflare 가 끝낸다. 클러스터 안(cloudflared → Traefik → argocd-server)은 평문
     server.insecure: true
   cm:
-    # ⭐ Cloudflare Access(정책 owner)를 통과해야 이 화면에 닿는다. 그 뒤에서는 로그인 없이 읽기만 할 수 있게 한다 —
-    #    동기화 · 삭제 같은 쓰기는 admin 로그인이 필요하다
-    users.anonymous.enabled: "true"
+    # ⭐ 로그인은 Cloudflare Access SSO(OIDC) 하나 — install.sh 가 Secret argocd-oidc 로 oidc.config 를 넣는다.
+    #    익명 읽기는 끈다(v3.5 화면이 익명으로는 앱 목록을 그리지 못했다). 로컬 admin 은 SSO 가 안 될 때의 비상용
+    users.anonymous.enabled: "false"
     # git 을 3 분마다 본다(기본값). 공개 저장소라 자격 증명이 없다
     timeout.reconciliation: 180s
   rbac:
-    policy.default: role:readonly
+    # Access 정책 owner 를 통과한 사람만 SSO 로 들어온다 — 들어온 사람은 관리자다(1 인 운영)
+    policy.default: role:admin
+    scopes: "[email]"
 
 dex:
   enabled: false

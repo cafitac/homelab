@@ -13,7 +13,25 @@ ARGOCD_CHART_VERSION=10.9.6
 kubectl apply -f namespace.yaml
 helm repo add argo https://argoproj.github.io/argo-helm >/dev/null 2>&1 || true
 helm repo update argo >/dev/null
+# ⭐ SSO — Cloudflare Access 를 OIDC 공급자로 쓴다. Client ID 는 Secret argocd-oidc 에만 있다(공개 저장소에 두지 않는다).
+#    Secret 이 없으면 SSO 없이 올린다 — argocd/set-oidc-secret.sh 로 넣고 다시 실행한다
+EXTRA=()
+if kubectl -n argocd get secret argocd-oidc >/dev/null 2>&1; then
+  CLIENT_ID=$(kubectl -n argocd get secret argocd-oidc -o jsonpath='{.data.clientID}' | base64 -d)
+  OIDC=$(mktemp); trap 'rm -f "$OIDC"' EXIT
+  cat > "$OIDC" <<YAML
+configs:
+  cm:
+    oidc.config: |
+      name: Cloudflare Access
+      issuer: https://cafitac.cloudflareaccess.com/cdn-cgi/access/sso/oidc/$CLIENT_ID
+      clientID: \$argocd-oidc:clientID
+      clientSecret: \$argocd-oidc:clientSecret
+      requestedScopes: [openid, email, profile]
+YAML
+  EXTRA=(-f "$OIDC")
+fi
 helm upgrade --install argocd argo/argo-cd --version "$ARGOCD_CHART_VERSION" \
-  -n argocd -f values.yaml --wait --timeout 10m
+  -n argocd -f values.yaml "${EXTRA[@]}" --wait --timeout 10m
 kubectl apply -k .
 echo "Argo CD 준비됨 — https://argocd.cafitac.com (admin 비밀번호: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)"

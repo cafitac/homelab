@@ -1,0 +1,19 @@
+# threads.cafitac.com — thread-example(비공개 저장소). 매니페스트는 그 저장소의 deploy/k8s 에 있다(ADR 0035).
+# 읽기: 읽기 전용 배포 키 — argocd/set-repo-key.sh cafitac/thread-example
+# ⚠️ targetRevision 은 main 이 아니라 통합 브랜치다. 그 저장소는 PR 을 agent/stage4-db-foundation 에 병합한다
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: thread-example
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:cafitac/thread-example.git
+    targetRevision: agent/stage4-db-foundation
+    path: deploy/k8s/overlays/homelab
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    # ⚠️ prune 끔 — DB(StatefulSet) · PVC
+    automated: { prune: false, selfHeal: true }

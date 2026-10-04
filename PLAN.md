@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 ~ 4 · 6 단계(정리) 완료 — 5 단계(thread-example) 진행 중: 준비(디스크 1TB · static CPU manager · judge runner 평소 0) 완료
+- 상태: 0 ~ 4 · 6 단계(정리) 완료 — 5 단계(thread-example) 진행 중: 준비(디스크 1TB · static CPU manager · judge runner 평소 0) · P12-01 · P12-14 완료
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -200,6 +200,13 @@ homelab/
 - 이 저장소의 학습 순서에서 Kubernetes 는 단계 12 다. 그 전에 옮기면 학습 단위를 건너뛰게 되므로 **시점은 커리큘럼에 맞춘다.**
 - 그때 할 일: Terraform(docker provider) → k8s 매니페스트, 고정 예산 = Guaranteed QoS, DB PVC 300Gi, 트래픽 봇 Deployment, ops(Prometheus · Grafana · console)는 monitoring 과 합칠지 결정
 - 그때까지는 colima `thread-example` 프로필을 유지한다(이미 SSD · 300GB). 최종 목표가 「전부 k8s」이므로 단계 12 를 미루지 않고 이 이전에 맞춰 당긴다.
+
+진행 (그 저장소 ADR 0035 — 단계 12 단위 PR):
+
+- P12-01 이미지 · SIGTERM — graceful 상한 20s(< terminationGracePeriodSeconds 30s), 비 root (thread-example#29)
+- P12-14 `deploy/k8s` Kustomize 골격 — namespace `thread-example`(6 코어 / 10Gi) · `-edge`(2 / 6Gi) · `-ops`(1 / 1Gi), 쿼터 · 격리 (thread-example#30)
+- Argo CD Application `thread-example` — 비공개 저장소를 읽기 전용 배포 키로(`argocd/set-repo-key.sh`), 통합 브랜치 `agent/stage4-db-foundation` 을 따라간다
+- 다음: P12-13(postgres) → P12-03 · 08(app) → P12-04(gateway · Ingress) → P12-06 → P12-05 → 이전
 
 ### 6 단계 — 정리
 

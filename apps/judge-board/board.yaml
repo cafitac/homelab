@@ -23,6 +23,8 @@ spec:
             - { name: BOARD_DB_PASSWORD, valueFrom: { secretKeyRef: { name: board-env, key: BOARD_DB_PASSWORD } } }
             - { name: BOARD_INVITE, valueFrom: { secretKeyRef: { name: board-env, key: BOARD_INVITE } } }
             - { name: BOARD_PUBLIC_URL, value: "https://gather.cafitac.com" }
+            # 쿠키로 인증한 쓰기 요청을 받아 줄 출처(CSRF). 비우면 개발용 localhost:3000 이 허용 목록에 남는다
+            - { name: BOARD_ALLOWED_ORIGINS, value: "https://gather.cafitac.com" }
             # 공개 주소는 https 뒤에 있다
             - { name: BOARD_COOKIE_SECURE, value: "true" }
             - { name: BOARD_OFFICIAL_LANES, valueFrom: { secretKeyRef: { name: board-env, key: BOARD_OFFICIAL_LANES } } }

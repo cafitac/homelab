@@ -114,6 +114,8 @@ homelab/
 - [x] `hello.cafitac.com` 외부 200 · VM 재시작 뒤 손대지 않고 200 · PV 내용 그대로 · 전역 docker 컨텍스트 그대로
 - [x] 격리 컴포넌트(`platform/components/isolation`): 다른 namespace → 차단, 같은 namespace · Traefik → 허용, 쿼터 초과 파드 거부
 - [x] monitoring — kube-prometheus-stack 91.9.0 · blackbox(공개 주소 6 개, colima 쪽 서비스 포함) · 규칙 4 개(노드 디스크 80/90% · 사이트 다운 · Prometheus 크기). Prometheus 보존 15 일 · 25GB(PVC 30Gi). Alertmanager 수신처 없음
+- [x] 모니터링 도메인 — `grafana` · `prometheus` · `alertmanager.cafitac.com`. Cloudflare Access 앱 `homelab-monitoring`(정책 `owner`, preview-hub 와 같음)을 **먼저** 만들고 DNS 를 붙였다. 인증 없이 열면 Access 로그인(302)
+- [ ] k8s API 는 도메인으로 열지 않는다 — 원격 `kubectl` 은 ssh 포트 포워딩
 - [ ] 검증이 끝나면 hello 와 DNS 레코드 정리
 
 - colima 프로필 `k8s` (12 코어 · 64GB · 500GB, 디스크 SSD) + k3s

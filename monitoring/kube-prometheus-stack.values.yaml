@@ -7,8 +7,16 @@ kubeScheduler: { enabled: false }
 kubeProxy: { enabled: false }
 kubeEtcd: { enabled: false }
 
+# ⭐ 도메인으로 연다 — 반드시 Cloudflare Access(본인 이메일 인증) 뒤에서만. Prometheus · Alertmanager 는 자체 인증이 없다.
+#    순서: Access 앱을 먼저 만들고 → 그 다음 DNS(cloudflared tunnel route dns homelab <호스트>). 반대로 하면 인증 없이 열리는 순간이 생긴다
 prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts: [prometheus.cafitac.com]
+    paths: [/]
   prometheusSpec:
+    externalUrl: https://prometheus.cafitac.com
     retention: 15d
     retentionSize: 25GB
     resources:
@@ -29,12 +37,26 @@ prometheus:
 alertmanager:
   # ⭐ 수신처는 연결하지 않는다(사용자 결정 2026-10-05 「아직 연결하지말자」). 경보는 Alertmanager 화면에서만 본다.
   #    창구가 정해지면 config.receivers 에 추가하고 route 를 바꾼다
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts: [alertmanager.cafitac.com]
+    paths: [/]
   alertmanagerSpec:
+    externalUrl: https://alertmanager.cafitac.com
     resources:
       requests: { cpu: 20m, memory: 64Mi }
       limits: { cpu: 200m, memory: 256Mi }
 
 grafana:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts: [grafana.cafitac.com]
+    path: /
+  grafana.ini:
+    server:
+      root_url: https://grafana.cafitac.com
   # 관리자 비밀번호는 install.sh 가 무작위로 만들어 Secret 으로 넣는다(저장소에 없다)
   admin:
     existingSecret: grafana-admin

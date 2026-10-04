@@ -1,0 +1,7 @@
+# 터널 homelab 하나가 모든 *.cafitac.com 을 받는다. 어떤 호스트가 이 터널로 오는지는 DNS 레코드가 정하고,
+# 호스트별 분기는 Traefik Ingress 가 한다 — 여기에는 규칙을 하나만 둔다.
+# ⭐ 터널 ID · 자격 증명은 이 파일에 없다(공개 저장소). 토큰은 Secret cloudflared-token 으로 넣는다(platform/tunnel.sh).
+no-autoupdate: true
+metrics: 0.0.0.0:2000
+ingress:
+  - service: http://traefik.kube-system.svc.cluster.local:80

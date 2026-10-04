@@ -61,9 +61,7 @@ spec:
         - name: bot
           image: phub/hub
           imagePullPolicy: IfNotPresent
-          # ⚠️ K5(전환) 전까지 대기 — colima 의 옛 bot 이 같은 PR 코멘트를 폴링하고 있어, 둘 다 돌면 /preview 명령이 두 번 실행된다.
-          #    전환할 때 옛 스택을 내리고 이 줄을 command: [phub, bot] 으로 되돌린다
-          command: [sleep, infinity]
+          command: [phub, bot]
           envFrom: *env
           env:
             - { name: PHUB_HUB_EXEC, value: "" }

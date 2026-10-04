@@ -1,0 +1,14 @@
+# portfolio.cafitac.com — cafitac/portfolio-hub 의 정적 사이트
+# 이미지 갱신: portfolio-hub 저장소에서 deploy/k8s-image.sh → 출력된 태그를 아래 newTag 에 적고 apply
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: portfolio
+resources:
+  - namespace.yaml
+  - quota.yaml
+  - app.yaml
+components:
+  - ../../platform/components/isolation
+images:
+  - name: portfolio-hub
+    newTag: e1c97c2c1045

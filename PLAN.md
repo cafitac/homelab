@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 단계 진행 중
+- 상태: 0 단계 완료 · 1 단계 완료(portfolio) · 2 단계 전 Argo CD
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -127,6 +127,8 @@ homelab/
 - **통과 기준**: 테스트용 nginx 를 `hello.cafitac.com` 으로 띄워 외부 200 · PVC 가 SSD 에 생김 확인 · VM 재시작 뒤 사람 손 없이 다시 200 · 기본 도커 컨텍스트 그대로
 
 ### 1 단계 — portfolio-hub (상태 없음)
+
+완료 (2026-10-05): 이미지 `portfolio-hub:<커밋>`(portfolio-hub `deploy/k8s-image.sh`, k8s VM docker 로 빌드 · 레지스트리 없음) → `apps/portfolio`(2 개 · 쿼터 · 격리). 클러스터 안 Traefik 경유 200 · 내용 동일 확인 후 DNS 를 `homelab` 터널로. 표시를 붙인 외부 요청이 k8s 로그에 1 · 옛 컨테이너에 0. 옛 colima 컨테이너 · 터널 `portfolio-hub` 는 6 단계까지 롤백용으로 남긴다.
 
 - nginx Deployment + ConfigMap(사이트 파일) 또는 이미지
 - DNS `portfolio.cafitac.com` → `homelab`

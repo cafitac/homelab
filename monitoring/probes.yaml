@@ -1,0 +1,21 @@
+# ⭐ Mac Studio 에서 공개하는 모든 주소 — k8s 로 옮기기 전(colima)의 서비스도 포함한다. 경보 범위 = Mac Studio 전체(사용자 결정)
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: public-sites
+  namespace: monitoring
+spec:
+  interval: 60s
+  module: http_2xx
+  prober:
+    url: blackbox-prometheus-blackbox-exporter.monitoring.svc:9115
+  targets:
+    staticConfig:
+      static:
+        - https://portfolio.cafitac.com
+        - https://interview.cafitac.com
+        - https://gather.cafitac.com
+        - https://threads.cafitac.com
+        # Cloudflare Access 로그인 페이지로 넘어간다 — 따라가서 200 이면 터널은 산 것이다
+        - https://preview-hub.cafitac.com
+        - https://hello.cafitac.com

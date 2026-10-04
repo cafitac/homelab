@@ -113,7 +113,7 @@ homelab/
 - [x] 터널 `homelab` + cloudflared 2 개 — 터널 ID · 자격 증명은 저장소 밖(Secret)
 - [x] `hello.cafitac.com` 외부 200 · VM 재시작 뒤 손대지 않고 200 · PV 내용 그대로 · 전역 docker 컨텍스트 그대로
 - [x] 격리 컴포넌트(`platform/components/isolation`): 다른 namespace → 차단, 같은 namespace · Traefik → 허용, 쿼터 초과 파드 거부
-- [ ] monitoring (kube-prometheus-stack, 경보 규칙만)
+- [x] monitoring — kube-prometheus-stack 91.9.0 · blackbox(공개 주소 6 개, colima 쪽 서비스 포함) · 규칙 4 개(노드 디스크 80/90% · 사이트 다운 · Prometheus 크기). Prometheus 보존 15 일 · 25GB(PVC 30Gi). Alertmanager 수신처 없음
 - [ ] 검증이 끝나면 hello 와 DNS 레코드 정리
 
 - colima 프로필 `k8s` (12 코어 · 64GB · 500GB, 디스크 SSD) + k3s

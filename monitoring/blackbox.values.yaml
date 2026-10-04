@@ -1,0 +1,4 @@
+# prometheus-blackbox-exporter 11.19.1 — 공개 주소가 밖에서 열리는지 본다(Cloudflare 를 거친 실제 경로)
+resources:
+  requests: { cpu: 10m, memory: 32Mi }
+  limits: { cpu: 200m, memory: 128Mi }

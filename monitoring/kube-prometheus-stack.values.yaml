@@ -1,0 +1,50 @@
+# kube-prometheus-stack 91.9.0 — 단일 노드 k3s 에 맞춘 값
+# ⚠️ 격리 컴포넌트(기본 거부)를 이 namespace 에는 붙이지 않는다. 오퍼레이터의 admission webhook 을 API 서버가 불러야 한다
+
+# k3s 는 컨트롤 플레인을 한 프로세스에 묶어 이 대상들의 지표 포트가 열려 있지 않다 — 켜 두면 항상 「대상 다운」 경보가 뜬다
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeProxy: { enabled: false }
+kubeEtcd: { enabled: false }
+
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    retentionSize: 25GB
+    resources:
+      requests: { cpu: 200m, memory: 1Gi }
+      limits: { cpu: "1", memory: 3Gi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources: { requests: { storage: 30Gi } }
+    # 라벨을 맞추지 않아도 모든 namespace 의 ServiceMonitor · Probe · PrometheusRule 을 읽는다
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+alertmanager:
+  # ⭐ 수신처는 연결하지 않는다(사용자 결정 2026-10-05 「아직 연결하지말자」). 경보는 Alertmanager 화면에서만 본다.
+  #    창구가 정해지면 config.receivers 에 추가하고 route 를 바꾼다
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }
+      limits: { cpu: 200m, memory: 256Mi }
+
+grafana:
+  # 관리자 비밀번호는 install.sh 가 무작위로 만들어 Secret 으로 넣는다(저장소에 없다)
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+prometheusOperator:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }

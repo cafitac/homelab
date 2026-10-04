@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    # 프로젝트 namespace 의 allow-from-monitoring 이 이 라벨을 본다
+    homelab/tier: monitoring

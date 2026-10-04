@@ -1,0 +1,11 @@
+# 상한을 적지 않은 컨테이너에도 기본값을 준다 — 하나가 노드를 다 먹지 못하게.
+# ResourceQuota 가 있는 namespace 에서는 requests · limits 가 없는 파드는 거부되므로 이 기본값이 그 구멍을 메운다.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 50m, memory: 64Mi }
+      default: { cpu: 500m, memory: 512Mi }

@@ -106,6 +106,16 @@ homelab/
 
 ### 0 단계 — 클러스터 기반
 
+진행 (2026-10-05):
+
+- [x] colima `k8s` (12 코어 · 64GB · 500GB) + k3s v1.35, 데이터 디스크 SSD — lima 는 디스크 폴더를 미리 링크해 두면 거부한다. 만든 뒤 멈추고 옮긴다(`cluster/up.sh`)
+- [x] Traefik 켬 · local-path PV 경로 `/var/lib/rancher/k3s/storage` = SSD 데이터 디스크
+- [x] 터널 `homelab` + cloudflared 2 개 — 터널 ID · 자격 증명은 저장소 밖(Secret)
+- [x] `hello.cafitac.com` 외부 200 · VM 재시작 뒤 손대지 않고 200 · PV 내용 그대로 · 전역 docker 컨텍스트 그대로
+- [x] 격리 컴포넌트(`platform/components/isolation`): 다른 namespace → 차단, 같은 namespace · Traefik → 허용, 쿼터 초과 파드 거부
+- [ ] monitoring (kube-prometheus-stack, 경보 규칙만)
+- [ ] 검증이 끝나면 hello 와 DNS 레코드 정리
+
 - colima 프로필 `k8s` (12 코어 · 64GB · 500GB, 디스크 SSD) + k3s
 - platform: 터널 `homelab` · cloudflared Deployment · Traefik · local-path 경로 확인
 - namespace 템플릿(쿼터 · LimitRange · NetworkPolicy), monitoring(경보 규칙만)

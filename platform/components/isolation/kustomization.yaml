@@ -1,0 +1,9 @@
+# 프로젝트 namespace 마다 붙이는 격리 규칙. 프로젝트 kustomization 에서:
+#   namespace: <프로젝트>
+#   components: [../../platform/components/isolation]
+# 쿼터(ResourceQuota)는 프로젝트마다 크기가 달라 각 프로젝트가 직접 둔다.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - networkpolicy.yaml
+  - limitrange.yaml

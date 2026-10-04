@@ -1,5 +1,5 @@
 # 0 단계 검증용 — 외부 접속(터널 → Traefik → Ingress) · PV 가 SSD 에 생기는지 · VM 재시작 뒤 자동 복구.
-# 검증이 끝나면 지운다: kubectl delete -f apps/hello/hello.yaml
+# 검증이 끝나면 지운다: kubectl delete -k apps/hello
 apiVersion: v1
 kind: Namespace
 metadata:

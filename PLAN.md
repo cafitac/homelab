@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 ~ 4 · 6 단계(정리) 완료 — 남은 것 5 단계(thread-example)
+- 상태: 0 ~ 4 · 6 단계(정리) 완료 — 5 단계(thread-example) 진행 중: 준비(디스크 1TB · static CPU manager · judge runner 평소 0) 완료
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -240,6 +240,11 @@ homelab/
 3. ~~Argo CD 도입 시점~~ → 최종 Argo CD 로 결정. 1 단계(portfolio-hub) 뒤에 올리고, 2 단계부터 Argo CD 로 배포한다
 4. **puri** — 소유자와 상의해 옮길지, colima 에 남길지
 5. ~~`homelab` 저장소 공개 여부~~ → **공개** (사용자 결정 2026-10-05). 비밀값은 계속 git 밖에 두고, 올리기 전에 비밀값 · 내부 주소 검사를 한다. Argo CD 는 공개 저장소를 자격 증명 없이 읽는다
+
+## 6.1 후속 (5 단계 뒤)
+
+- judge runner 를 KEDA 로 — 채점 큐에 일감이 있으면 1, 비면 0(지금은 사람이 scale). 사용자와 정한 원칙: 공개 포트폴리오 사이트는 항상 켜 두고(깨우는 지연이 첫인상을 해친다), 무겁고 가끔 쓰는 것만 필요할 때 켠다
+- 가끔만 쓰는 사이드 프로젝트가 늘면 Traefik 앞 「깨우는 중」 화면(Sablier 류)을 검토
 
 ## 7. 포트폴리오로서
 

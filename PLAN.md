@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 · 1 · 2 단계 완료, 3 단계 K1~K4 완료 — 다음 K5(preview-hub 전환)
+- 상태: 0 · 1 · 2 · 3 단계 완료 — 다음 4 단계(judge-board)
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -168,7 +168,10 @@ homelab/
 - [x] K4 `apps/preview-hub` — hub + bot 사이드카 · 레지스트리(hostPort 127.0.0.1 만) · buildkitd · RBAC · Argo CD
   - 시험: hub 파드에서 `phub up k4test` → 65 초에 READY(빌드 · postgres · init Job 2 개 · HEALTHY), Traefik 경유 요청은 hub `/auth/verify` 가 401(fail-closed), 같은 namespace 에서 앱 200, 환경 설명 proxy = Traefik, `phub down` 뒤 인벤토리 · namespace · PV 모두 없음
   - ⚠️ 새 bot 은 `sleep` — 옛 bot 과 같은 PR 코멘트를 폴링하므로 K5 에서 옛 스택을 내린 뒤 켠다
-- [ ] K5 전환: 옛 환경 내림 → 옛 compose 스택 중지 → `preview-hub.cafitac.com` · `*.cafitac.com` DNS 를 homelab 터널로 → 새 bot 켬 → e2e(ai-qa) → colima `preview-hub` 정리(삭제는 확인 후)
+- [x] K5 전환(2026-10-05): 옛 환경 없음(모두 DELETED) → 옛 compose 스택 정지 → `preview-hub.cafitac.com` · `*.cafitac.com` DNS 를 homelab 터널로 → 새 bot 켬(Argo CD) → e2e
+  - 첫 e2e 에서 ai-qa 2 개 실패 → 원인: 서비스 선택자가 같은 서비스의 postgres · init Job 파드까지 골라 backend Service 가 요청을 그쪽에도 보냈다 → preview-hub#20 로 선택자에 role 을 넣고 「선택자 하나 = 워크로드 하나」 테스트로 고정
+  - 재실행: ai-qa `seed-notes-listed` · `add-note-shows-first` 모두 PASSED, `phub down` 뒤 인벤토리 비어 있음
+  - colima `preview-hub` VM 과 데이터 디스크(본체 15GB) 삭제 — 본체 여유 24 → 40GB
 
 - 지금: 환경 = docker compose 프로젝트, Traefik(도커 라벨)이 `phub-*.cafitac.com` 분기
 - 목표: **환경 = namespace `phub-<이름>`**, 서비스마다 Deployment · Service · Ingress, 환경 namespace 마다 쿼터

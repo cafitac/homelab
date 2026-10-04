@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: judge-board
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cafitac/homelab.git
+    targetRevision: main
+    path: apps/judge-board
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    # ⚠️ prune 끔 — DB · data(문제 꾸러미 · 제출) PVC
+    automated: { prune: false, selfHeal: true }

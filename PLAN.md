@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 · 1 · 2 · 3 단계 완료 — 다음 4 단계(judge-board)
+- 상태: 0 ~ 4 단계 완료 — 다음 6 단계 정리(사용자: 4 단계 뒤 한 번에), 그 뒤 5 단계(thread-example)
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -181,6 +181,15 @@ homelab/
 - **통과 기준**: `phub up` 으로 예시 3 서비스 환경 생성 · 고유 주소 접속 · `phub down` · `gc` 후 namespace 와 PVC 가 남지 않음 · ai-qa 시나리오 통과
 
 ### 4 단계 — judge-board (실행기 재설계)
+
+완료 (2026-10-05) — 사용자 결정: DinD + VM 16 코어(공식 채점 자원 보장)
+
+- k8s VM 12 → 16 코어
+- runner 는 dockerd 네이티브 사이드카(DinD, 127.0.0.1:2375)를 부린다 — 리그 compose · run.sh · grade.py 그대로(참가자 로컬과 같은 채점기). Guaranteed QoS(dockerd 7 코어 · 8GiB). 공식 채점 2 줄은 `replicas: 2`(14 코어 예약)
+- 이전: 진행 중 일감 0 → 옛 runner · board · frontend 정지 → DB 복원(테이블 8 개 일치) → packs · problems · work 를 PVC 로(220 파일 체크섬 일치)
+- ⭐ 같은 채점기 확인: 지난 공식 제출(c98870b48e2f, 문제 01 기본 · 장애)을 k8s runner 안에서 worker.py 절차 그대로 다시 채점(운영 보고 없이) — 판정 값 전부 일치(캠페인 100% · 429 0 · SLA 0 · 156/156 · 중복 0 · 사용률 0.941, 장애 유지 여부 같음), 측정값만 실행 오차(p95 0.43 → 0.45s 등)
+- `gather.cafitac.com` → homelab 터널, 옛 컨테이너 정지(삭제는 6 단계)
+- 꾸러미 갱신: judge-board `deploy/sync-packs.sh`(해설 검사) → `apps/judge-board/load-data.sh`
 
 - board · frontend · postgres 는 그대로 옮긴다
 - runner: 지금은 도커 소켓으로 샌드박스를 띄운다 → **채점 한 판 = k8s Job**(자원 고정 · 판마다 빈 포트 대신 Pod 네트워크) 으로 바꾸거나, 당분간 DinD 사이드카

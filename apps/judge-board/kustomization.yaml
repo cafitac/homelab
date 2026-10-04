@@ -1,0 +1,21 @@
+# gather.cafitac.com — judge-board(비공개 저장소). 실습 문제를 실제로 돌려 채점하는 스터디 채점판.
+# 이미지 갱신: judge-board 저장소에서 deploy/k8s-images.sh → 출력된 태그를 아래 newTag 에(세 개 같은 태그)
+# 비밀값: secrets.sh(Mac Studio) — 저장소에 없다. 문제 꾸러미 동기화: sync-packs.sh
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: judge-board
+resources:
+  - namespace.yaml
+  - quota.yaml
+  - db.yaml
+  - data.yaml
+  - board.yaml
+  - frontend.yaml
+  - runner.yaml
+  - backup.yaml
+components:
+  - ../../platform/components/isolation
+images:
+  - { name: judge-board-board, newTag: 0d1327ed8eed }
+  - { name: judge-board-frontend, newTag: 0d1327ed8eed }
+  - { name: judge-board-runner, newTag: 0d1327ed8eed }

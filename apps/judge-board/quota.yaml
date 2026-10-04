@@ -1,0 +1,13 @@
+# runner 의 공식 채점 몫(dockerd 7 코어 · 8GiB, Guaranteed)이 대부분이다. 나머지 실사용(2026-10-05) board 384MiB · frontend 202MiB
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+spec:
+  hard:
+    requests.cpu: "9"
+    requests.memory: 12Gi
+    limits.cpu: "14"
+    limits.memory: 16Gi
+    requests.storage: 80Gi
+    persistentvolumeclaims: "4"

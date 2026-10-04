@@ -1,0 +1,50 @@
+# 화면(Next.js). 서버 쪽 호출은 빌드 때 고정된 http://board:8780 — Service 이름이 board 여야 한다
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: frontend }
+  template:
+    metadata:
+      labels: { app: frontend }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: frontend
+          image: judge-board-frontend
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: PORT, value: "3000" }
+            - { name: BACKEND_INTERNAL_URL, value: "http://board:8780" }
+          ports: [{ containerPort: 3000 }]
+          readinessProbe:
+            tcpSocket: { port: 3000 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+spec:
+  selector: { app: frontend }
+  ports: [{ port: 3000, targetPort: 3000 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend
+spec:
+  rules:
+    - host: gather.cafitac.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: frontend, port: { number: 3000 } }

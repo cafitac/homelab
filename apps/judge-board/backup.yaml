@@ -1,0 +1,55 @@
+# 매일 04:30(서울) DB 를 떠 두고 14 일치만 남긴다 — compose 의 backup 컨테이너를 옮긴 것.
+# 되살리기: kubectl -n judge-board exec -i db-0 -- pg_restore -U board -d board --clean --if-exists < <파일>
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backups
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 5Gi } }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: "30 4 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          enableServiceLinks: false
+          containers:
+            - name: backup
+              image: postgres:16-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  f=/backups/board-$(date +%Y%m%d-%H%M).dump
+                  pg_dump -Fc -f "$f.part"
+                  pg_restore --list "$f.part" > /dev/null
+                  mv "$f.part" "$f"
+                  find /backups -name 'board-*.dump' -mtime +14 -delete
+                  echo "백업 $f ($(du -h "$f" | cut -f1))"
+              env:
+                - { name: PGHOST, value: db }
+                - { name: PGDATABASE, value: board }
+                - { name: PGUSER, value: board }
+                - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: board-env, key: BOARD_DB_PASSWORD } } }
+                - { name: TZ, value: Asia/Seoul }
+              volumeMounts:
+                - { name: backups, mountPath: /backups }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { cpu: 500m, memory: 256Mi }
+          volumes:
+            - name: backups
+              persistentVolumeClaim: { claimName: backups }

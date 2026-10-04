@@ -1,0 +1,57 @@
+# 채점판(Kotlin · Spring) — 계정 · 문제 · 제출 · 판정 · 순위 · 큐
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: board
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: board }
+  template:
+    metadata:
+      labels: { app: board }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: board
+          image: judge-board-board
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: BOARD_DB_URL, value: "jdbc:postgresql://db:5432/board" }
+            - { name: BOARD_DB_USER, value: board }
+            - { name: BOARD_DB_PASSWORD, valueFrom: { secretKeyRef: { name: board-env, key: BOARD_DB_PASSWORD } } }
+            - { name: BOARD_INVITE, valueFrom: { secretKeyRef: { name: board-env, key: BOARD_INVITE } } }
+            - { name: BOARD_PUBLIC_URL, value: "https://gather.cafitac.com" }
+            # 공개 주소는 https 뒤에 있다
+            - { name: BOARD_COOKIE_SECURE, value: "true" }
+            - { name: BOARD_OFFICIAL_LANES, valueFrom: { secretKeyRef: { name: board-env, key: BOARD_OFFICIAL_LANES } } }
+            - { name: BOARD_PRACTICE_LANES, valueFrom: { secretKeyRef: { name: board-env, key: BOARD_PRACTICE_LANES } } }
+            - { name: BOARD_PROBLEMS, value: /data/problems }
+            - { name: BOARD_PACKS, value: /data/packs }
+            - { name: BOARD_WORK, value: /data/work }
+            - { name: TZ, value: Asia/Seoul }
+          ports: [{ containerPort: 8780 }]
+          startupProbe:
+            tcpSocket: { port: 8780 }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket: { port: 8780 }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /data }
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { cpu: "2", memory: 1Gi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: board
+spec:
+  selector: { app: board }
+  ports: [{ port: 8780, targetPort: 8780 }]

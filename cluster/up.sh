@@ -28,7 +28,7 @@ start() {
   # --mount none — 호스트 폴더를 VM 에 열지 않는다. 데이터는 전부 PV 로
   colima start -p "$PROFILE" --activate=false \
     --vm-type vz --runtime docker \
-    --cpu 12 --memory 64 --disk 500 \
+    --cpu 16 --memory 64 --disk 500 \
     --mount none \
     --dns 1.1.1.1 --dns 8.8.8.8 \
     --kubernetes --k3s-arg=--write-kubeconfig-mode=0644
@@ -50,6 +50,10 @@ relocate() {
 
 # ⚠️ k3s API 포트는 처음 설치할 때 무작위로 정해져 k3s 서비스 파일에 남는다(지금 55902). 재시작해도 그대로다.
 #    --k3s-listen-port 를 나중에 바꿔도 이미 설치된 k3s 에는 적용되지 않는다(10/5 확인) — 원격 kubectl 은 실제 포트를 읽어 쓴다
+# 코어 수를 바꾸면(12 → 16, 2026-10-05 judge-board 공식 채점 몫) 한 번 내렸다 올린다
+if colima status -p "$PROFILE" >/dev/null 2>&1 && ! grep -qE '^cpu: 16$' "$HOME/.colima/$PROFILE/colima.yaml"; then
+  colima stop -p "$PROFILE"
+fi
 if ! colima status -p "$PROFILE" >/dev/null 2>&1; then
   start
 fi

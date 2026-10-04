@@ -1,0 +1,10 @@
+# 문제 정의(problems) · 문제 꾸러미(packs) · 작업 폴더(work: 올린 zip · 로그 · 판별 폴더)
+# board 와 runner(+ dockerd) 가 같은 경로(/data)로 함께 마운트한다 — 리그 compose 의 bind mount 를
+# dockerd 가 그 경로로 풀기 때문이다. 노드가 하나라 RWO 로도 여러 파드가 같이 쓴다
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 10Gi } }

@@ -1,0 +1,13 @@
+# ⭐ Traefik 을 클러스터 안에서만 연다(ClusterIP).
+#    k3s 기본은 LoadBalancer + servicelb 라 VM 의 80/443 에 붙고, colima(lima)는 VM 에서 열린 포트를 Mac 의 모든 인터페이스로
+#    넘긴다 → LAN · tailnet 에서 Mac:80 에 Host 헤더만 붙이면 Cloudflare Access 를 거치지 않고 Prometheus · Grafana 에 닿았다(2026-10-05 발견).
+#    외부 요청은 cloudflared → traefik.kube-system.svc 로만 들어오므로 노드 포트가 필요 없다.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      type: ClusterIP

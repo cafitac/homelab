@@ -48,6 +48,8 @@ relocate() {
   echo "데이터 디스크를 SSD 로 옮겼다 → $DST"
 }
 
+# ⚠️ k3s API 포트는 처음 설치할 때 무작위로 정해져 k3s 서비스 파일에 남는다(지금 55902). 재시작해도 그대로다.
+#    --k3s-listen-port 를 나중에 바꿔도 이미 설치된 k3s 에는 적용되지 않는다(10/5 확인) — 원격 kubectl 은 실제 포트를 읽어 쓴다
 if ! colima status -p "$PROFILE" >/dev/null 2>&1; then
   start
 fi

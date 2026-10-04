@@ -115,8 +115,11 @@ homelab/
 - [x] 격리 컴포넌트(`platform/components/isolation`): 다른 namespace → 차단, 같은 namespace · Traefik → 허용, 쿼터 초과 파드 거부
 - [x] monitoring — kube-prometheus-stack 91.9.0 · blackbox(공개 주소 6 개, colima 쪽 서비스 포함) · 규칙 4 개(노드 디스크 80/90% · 사이트 다운 · Prometheus 크기). Prometheus 보존 15 일 · 25GB(PVC 30Gi). Alertmanager 수신처 없음
 - [x] 모니터링 도메인 — `grafana` · `prometheus` · `alertmanager.cafitac.com`. Cloudflare Access 앱 `homelab-monitoring`(정책 `owner`, preview-hub 와 같음)을 **먼저** 만들고 DNS 를 붙였다. 인증 없이 열면 Access 로그인(302)
-- [ ] k8s API 는 도메인으로 열지 않는다 — 원격 `kubectl` 은 ssh 포트 포워딩
-- [ ] 검증이 끝나면 hello 와 DNS 레코드 정리
+- [x] Grafana 는 Access JWT(`Cf-Access-Jwt-Assertion`, 발급자 = 우리 팀)로 바로 로그인 — 따로 계정 없음. admin 폼은 비상용
+- [x] ⚠️ **우회 경로 발견 · 차단**: k3s 기본 Traefik(LoadBalancer + servicelb)이 VM 80/443 에 붙고 lima 가 이를 Mac 의 모든 인터페이스로 넘겨, LAN · tailnet 에서 `Host:` 헤더만으로 Access 없이 Prometheus · Grafana 에 닿았다. Traefik 을 ClusterIP 로 바꿔(`platform/traefik`) Mac:80 리스너가 사라진 것을 확인
+- [x] k8s API 는 도메인으로 열지 않는다 — 원격 `kubectl` 은 `cluster/remote-kubeconfig.sh`(ssh 포트 포워딩)
+- [x] hello 앱 · `hello.cafitac.com` 레코드 삭제
+
 
 - colima 프로필 `k8s` (12 코어 · 64GB · 500GB, 디스크 SSD) + k3s
 - platform: 터널 `homelab` · cloudflared Deployment · Traefik · local-path 경로 확인
@@ -172,6 +175,12 @@ homelab/
 | 디스크 500GB 도 언젠가 찬다 | PVC 마다 상한 + 사용률 경보 규칙(수신처는 나중) |
 | 이전 중 데이터 유실 | DB 는 쓰기 정지 창 → dump → 복원 → 검증 → DNS. 옛 데이터는 6 단계까지 지우지 않는다 |
 | judge-board 공식 채점이 다른 서비스와 CPU 를 다툼 | 채점 Job 에 Guaranteed QoS · 채점 시간대에는 preview 환경 수를 줄인다(미결 1) |
+
+## 5.1 알려진 노출 (남은 것)
+
+- lima 는 VM 에서 모든 주소로 열린 포트를 Mac 의 모든 인터페이스로 넘긴다. k8s VM 에서는 API(55902) · kubelet(10250) 이 그렇게 열려 있다 — 둘 다 인증서 없이는 401 이라 당장 위험은 낮지만 LAN · tailnet 에 보인다. macOS 방화벽(pf) 규칙으로 막는 것을 검토한다(sudo 필요)
+- ⭐ 새 서비스에 `hostPort` · `LoadBalancer` · `NodePort` 를 쓰지 않는다 — 같은 경로로 Mac 밖에 열린다. 외부 노출은 오직 cloudflared → Traefik(ClusterIP) → Ingress
+- colima 쪽 기존 VM(thread-example 등)도 0.0.0.0 으로 여는 포트가 있다(3000 · 8080 · 9090 등). 그 프로젝트를 옮길 때 함께 정리한다
 
 ## 6. 미결 (정해야 할 것)
 

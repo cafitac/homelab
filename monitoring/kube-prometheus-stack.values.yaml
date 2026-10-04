@@ -57,6 +57,19 @@ grafana:
   grafana.ini:
     server:
       root_url: https://grafana.cafitac.com
+    # ⭐ Cloudflare Access 로그인을 그대로 믿는다 — Grafana 계정을 따로 기억하지 않는다.
+    #    Access 가 요청마다 붙이는 Cf-Access-Jwt-Assertion 을 팀의 공개 키로 검증하고, 발급자가 우리 팀일 때만 받는다.
+    #    이 팀의 토큰은 정책 owner 를 통과한 사람에게만 발급된다. admin 로그인 폼은 비상용으로 남긴다
+    auth.jwt:
+      enabled: true
+      header_name: Cf-Access-Jwt-Assertion
+      email_claim: email
+      username_claim: email
+      jwk_set_url: https://cafitac.cloudflareaccess.com/cdn-cgi/access/certs
+      cache_ttl: 60m
+      expect_claims: '{"iss": "https://cafitac.cloudflareaccess.com"}'
+      auto_sign_up: true
+      role_attribute_path: "'Admin'"
   # 관리자 비밀번호는 install.sh 가 무작위로 만들어 Secret 으로 넣는다(저장소에 없다)
   admin:
     existingSecret: grafana-admin

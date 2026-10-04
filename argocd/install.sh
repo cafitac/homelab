@@ -34,4 +34,6 @@ fi
 helm upgrade --install argocd argo/argo-cd --version "$ARGOCD_CHART_VERSION" \
   -n argocd -f values.yaml "${EXTRA[@]}" --wait --timeout 10m
 kubectl apply -k .
-echo "Argo CD 준비됨 — https://argocd.cafitac.com (admin 비밀번호: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)"
+# 로컬 admin 을 껐으므로 처음 만들어진 비밀번호도 남기지 않는다
+kubectl -n argocd delete secret argocd-initial-admin-secret --ignore-not-found >/dev/null
+echo "Argo CD 준비됨 — https://argocd.cafitac.com (Cloudflare Access SSO)"

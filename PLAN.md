@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 단계 완료 · 1 단계 완료(portfolio) · 2 단계 전 Argo CD
+- 상태: 0 · 1 단계 완료, Argo CD 완료(GitOps) — 다음 2 단계(interview-coach)
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -133,6 +133,15 @@ homelab/
 - nginx Deployment + ConfigMap(사이트 파일) 또는 이미지
 - DNS `portfolio.cafitac.com` → `homelab`
 - **통과 기준**: 외부 200 · 이미지 · 캐시 헤더 동일 / **롤백**: DNS 를 `portfolio-hub` 터널로
+
+### Argo CD (1 단계와 2 단계 사이) — 완료 2026-10-05
+
+- Argo CD v3.5.3(차트 10.9.6), `argocd.cafitac.com` — Cloudflare Access(앱 homelab-monitoring) 뒤
+- 로그인: Cloudflare Access 를 OIDC 공급자로(SaaS 앱 `argocd`, 정책 owner). Client ID · secret 은 Secret `argocd-oidc` 에만(`argocd/set-oidc-secret.sh` 로 사람이 입력). 익명 · 로컬 admin 끔
+- App of Apps: `root` → `argocd/apps/` — platform(prune 끔) · portfolio · monitoring(차트 2 개 + 매니페스트). 4 개 Synced · Healthy
+- GitOps 확인: Traefik 설정 변경을 push 만 해서 Argo CD 가 반영
+- Ingress 가 Progressing 에 머무는 문제 → Traefik 이 Ingress status 에 대표 주소(`tunnel.homelab`)를 적게 함
+- monitoring 의 helm 설치 기록 삭제(이제 Argo CD 만 관리)
 
 ### 2 단계 — interview-coach (DB · 모델 캐시)
 

@@ -1,0 +1,122 @@
+# hub(phub serve: 대시보드 · JSON API · Access 검증 · 만료 정리) + bot(phub bot) 사이드카.
+# bot 은 같은 파드에서 같은 상태 볼륨 · ServiceAccount 로 phub CLI 를 직접 부른다(PHUB_HUB_EXEC="")
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: state
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 2Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: src
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 8Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hub
+spec:
+  replicas: 1
+  # 상태(SQLite) · 잠금 파일이 한 볼륨에 있다 — 두 개를 겹쳐 띄우지 않는다
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: hub }
+  template:
+    metadata:
+      labels: { app: hub }
+    spec:
+      serviceAccountName: hub
+      enableServiceLinks: false
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: hub
+          image: phub/hub
+          imagePullPolicy: IfNotPresent
+          command: [phub, serve]
+          envFrom: &env
+            - configMapRef: { name: hub-config }
+            - secretRef: { name: hub-access }
+          ports: [{ containerPort: 8080 }]
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            periodSeconds: 10
+          volumeMounts: &mounts
+            - { name: state, mountPath: /state }
+            - { name: src, mountPath: /src }
+            - { name: catalog, mountPath: /etc/phub, readOnly: true }
+            # 파일 하나만 — /run/secrets 전체를 덮으면 ServiceAccount 토큰(/var/run/secrets/kubernetes.io = /run/…)
+            # 마운트 지점을 만들지 못해 컨테이너가 뜨지 않는다(2026-10-05)
+            - { name: github, mountPath: /run/secrets/github_token, subPath: github_token, readOnly: true }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "2", memory: 1Gi }
+        - name: bot
+          image: phub/hub
+          imagePullPolicy: IfNotPresent
+          # ⚠️ K5(전환) 전까지 대기 — colima 의 옛 bot 이 같은 PR 코멘트를 폴링하고 있어, 둘 다 돌면 /preview 명령이 두 번 실행된다.
+          #    전환할 때 옛 스택을 내리고 이 줄을 command: [phub, bot] 으로 되돌린다
+          command: [sleep, infinity]
+          envFrom: *env
+          env:
+            - { name: PHUB_HUB_EXEC, value: "" }
+          volumeMounts: *mounts
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: "2", memory: 1Gi }
+      volumes:
+        - name: state
+          persistentVolumeClaim: { claimName: state }
+        - name: src
+          persistentVolumeClaim: { claimName: src }
+        - name: catalog
+          configMap: { name: catalog }
+        - name: github
+          # 0440 + fsGroup 1000 — hub 는 root 가 아니다
+          secret: { secretName: hub-github, defaultMode: 0440 }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hub-config
+data:
+  PHUB_RUNNER: kubernetes
+  PHUB_BUILDKIT_ADDR: tcp://buildkitd:1234
+  PHUB_REGISTRY: registry:5000
+  PHUB_REGISTRY_PULL: localhost:5000
+  PHUB_AUTH_URL: http://hub.preview-hub.svc.cluster.local:8080/auth/verify
+  PHUB_HUB_NAMESPACE: preview-hub
+  PHUB_PROXY_ADDRESS: traefik.kube-system.svc.cluster.local:80
+  PHUB_PROXY_PORT: "80"
+  PHUB_GC_INTERVAL: "900"
+  PHUB_BOT_INTERVAL: "20"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hub
+spec:
+  selector: { app: hub }
+  ports: [{ port: 8080, targetPort: 8080 }]
+---
+# 대시보드 — Cloudflare Access 앱 preview-hub(정책 owner) 뒤. hub 도 Access JWT 를 다시 검증한다(fail-closed)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hub
+spec:
+  rules:
+    - host: preview-hub.cafitac.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: hub, port: { number: 8080 } }

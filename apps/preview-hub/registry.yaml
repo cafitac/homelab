@@ -1,0 +1,92 @@
+# 프리뷰 이미지 레지스트리. buildkitd 는 Service(registry:5000)로 push, 노드(docker 런타임)는 localhost:5000 으로 받는다.
+# ⭐ hostPort 를 127.0.0.1 에만 묶는다 — iptables 로만 처리되어 VM 에 소켓이 없고 lima 가 Mac 으로 넘기지 않는다(2026-10-05 확인).
+#    0.0.0.0 이면 LAN · tailnet 에 열린다 — platform 규칙의 hostPort 금지에 대한 유일한 예외다
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 40Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: registry }
+  template:
+    metadata:
+      labels: { app: registry }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: registry
+          image: registry:2.8.3
+          env:
+            # 이미지 정리(phub gc)가 manifest 를 지울 수 있게
+            - { name: REGISTRY_STORAGE_DELETE_ENABLED, value: "true" }
+          ports:
+            - { containerPort: 5000, hostPort: 5000, hostIP: 127.0.0.1 }
+          readinessProbe:
+            httpGet: { path: /v2/, port: 5000 }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/registry }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: "1", memory: 512Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: registry }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+spec:
+  selector: { app: registry }
+  ports: [{ port: 5000, targetPort: 5000 }]
+---
+# phub gc 가 지운 manifest 의 레이어를 실제로 비운다. 매주 일요일 05:00 — 빌드가 없을 시간
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: registry-gc
+spec:
+  schedule: "0 5 * * 0"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          containers:
+            - name: gc
+              image: registry:2.8.3
+              command: [registry, garbage-collect, --delete-untagged, /etc/docker/registry/config.yml]
+              volumeMounts:
+                - { name: data, mountPath: /var/lib/registry }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { cpu: "1", memory: 512Mi }
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: registry }
+---
+# 노드(도커 데몬)가 localhost:5000 hostPort 로 이미지를 받는다 — 파드가 아닌 곳에서 오는 연결이라
+# 격리 컴포넌트의 기본 거부에 막힌다. 레지스트리 포트만 연다(읽기 · 쓰기 인증은 없다 — 노드 루프백 · 클러스터 안에서만 닿는다)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: registry-pull
+spec:
+  podSelector:
+    matchLabels: { app: registry }
+  ingress:
+    - ports: [{ port: 5000, protocol: TCP }]

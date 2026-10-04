@@ -1,0 +1,21 @@
+# preview-hub.cafitac.com + phub-<env>.cafitac.com — cafitac/preview-hub. 브랜치 · PR 단위 프리뷰 환경.
+# 환경 하나 = namespace phub-<env> 하나(Kubernetes 러너). hub 가 RBAC 로 그 namespace 들을 만들고 지운다.
+# 이미지 갱신: preview-hub 저장소에서 deploy/k8s-image.sh → 출력된 태그를 아래 newTag 에
+# 비밀값: secrets.sh(Mac Studio 에서 실행) — 저장소에 없다
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: preview-hub
+resources:
+  - namespace.yaml
+  - quota.yaml
+  - rbac.yaml
+  - registry.yaml
+  - buildkitd.yaml
+  - hub.yaml
+components:
+  - ../../platform/components/isolation
+configMapGenerator:
+  - name: catalog
+    files: [catalog.yaml]
+images:
+  - { name: phub/hub, newTag: 350a3ff4a6c5 }

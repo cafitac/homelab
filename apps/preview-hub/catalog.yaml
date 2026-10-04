@@ -1,0 +1,12 @@
+apiVersion: preview-hub/v1
+public_url_template: http://{subdomain}.{env}.localhost:18080
+public_access:
+  host_template: phub-{env}.cafitac.com
+  entry_service: frontend
+  path_template: /_svc/{subdomain}
+  dashboard_host: preview-hub.cafitac.com
+services:
+  backend: {repo: cafitac/preview-example-backend, default_ref: main}
+  frontend: {repo: cafitac/preview-example-frontend, default_ref: main}
+  notifier: {repo: cafitac/preview-example-notifier, default_ref: main, include: on_request}
+limits: {max_environments: 5, build_concurrency: 2, default_ttl: 24h, max_ttl: 7d}

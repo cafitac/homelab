@@ -1,0 +1,8 @@
+# argocd 네임스페이스에 붙이는 것 — 격리 규칙과 루트 Application. Argo CD 본체는 install.sh(helm)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+  - root.yaml
+components:
+  - ../platform/components/isolation

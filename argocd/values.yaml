@@ -1,0 +1,52 @@
+# argo-cd 10.9.6 (Argo CD v3.5.3) — 단일 노드 · Cloudflare Access 뒤
+global:
+  domain: argocd.cafitac.com
+
+configs:
+  params:
+    # TLS 는 Cloudflare 가 끝낸다. 클러스터 안(cloudflared → Traefik → argocd-server)은 평문
+    server.insecure: true
+  cm:
+    # ⭐ Cloudflare Access(정책 owner)를 통과해야 이 화면에 닿는다. 그 뒤에서는 로그인 없이 읽기만 할 수 있게 한다 —
+    #    동기화 · 삭제 같은 쓰기는 admin 로그인이 필요하다
+    users.anonymous.enabled: "true"
+    # git 을 3 분마다 본다(기본값). 공개 저장소라 자격 증명이 없다
+    timeout.reconciliation: 180s
+  rbac:
+    policy.default: role:readonly
+
+dex:
+  enabled: false
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hostname: argocd.cafitac.com
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+controller:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+repoServer:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: "1", memory: 512Mi }
+
+redis:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+
+applicationSet:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+
+notifications:
+  # 경보 수신처를 아직 정하지 않았다(사용자 결정) — 알림 컨트롤러도 끈다
+  enabled: false

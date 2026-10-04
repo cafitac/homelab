@@ -1,0 +1,17 @@
+# ⭐ App of Apps — argocd/apps/ 의 Application 들을 만든다. 프로젝트를 더할 때는 그 폴더에 파일 하나를 더한다
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cafitac/homelab.git
+    targetRevision: main
+    path: argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

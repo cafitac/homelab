@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 모니터링을 올린다 — Mac Studio 에서 실행한다. 여러 번 실행해도 된다.
 #   bash ~/Project/homelab/monitoring/install.sh
-# ⭐ 나중에 Argo CD 가 이 차트 · 값을 그대로 넘겨받는다. 버전은 여기서 고정한다.
+# ⚠️ 2026-10-05 부터 Argo CD(argocd/apps/monitoring.yaml)가 관리한다. 이 스크립트는 Argo CD 없이 처음 세울 때만 쓴다.
+#    버전을 바꿀 때는 argocd/apps/monitoring.yaml 의 targetRevision 도 같이 바꾼다.
 set -euo pipefail
 export PATH=/opt/homebrew/bin:$PATH
 export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/homelab.yaml}

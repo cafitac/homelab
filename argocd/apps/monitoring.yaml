@@ -1,0 +1,33 @@
+# 모니터링 — 차트 두 개(값은 이 저장소) + 이 저장소의 매니페스트(네임스페이스 · 프로브 · 규칙)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 91.9.0
+      helm:
+        releaseName: kps
+        valueFiles: [$values/monitoring/kube-prometheus-stack.values.yaml]
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: prometheus-blackbox-exporter
+      targetRevision: 11.19.1
+      helm:
+        releaseName: blackbox
+        valueFiles: [$values/monitoring/blackbox.values.yaml]
+    - repoURL: https://github.com/cafitac/homelab.git
+      targetRevision: main
+      ref: values
+      path: monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions:
+      # CRD 가 커서 client-side apply 의 annotation 한도(256KB)를 넘는다
+      - ServerSideApply=true

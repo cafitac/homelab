@@ -35,6 +35,14 @@ spec:
           readinessProbe:
             tcpSocket: { port: 8791 }
             periodSeconds: 10
+          # 2026-10-06 서버가 CPU 0 으로 멈췄는데 TCP 준비 검사는 계속 통과해 아무도 재시작하지 않았다.
+          # 실제 HTTP 응답을 보고 90초 넘게 응답이 없으면 재시작한다. 서버 안의 HangWatchdog 가 그 전(약 30초)에
+          # 가상 스레드까지 담은 스레드 덤프를 로그에 남긴다. liveness 그룹은 DB 상태를 보지 않는다.
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8791 }
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
           resources:

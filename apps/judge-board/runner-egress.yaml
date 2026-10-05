@@ -1,5 +1,4 @@
 # 실행기 파드의 나가는 길을 좁힌다 — 참가자 코드가 이 파드의 dockerd 안에서 돈다.
-# 파드에 homelab/egress: restricted 라벨이 있어 공통 격리의 egress-no-host 에서 빠진다(합쳐지면 이 제한이 풀린다).
 #
 # 막지 않으면(2026-10-06 확인) 파드에서 192.168.5.2(맥 호스트의 127.0.0.1 로 이어진다)로 맥의 sshd · whisper-server ·
 # 개발 서버 · 다른 colima VM 의 포워딩 포트가 열려 있었고, 클러스터 안의 judge-board DB · prometheus · argocd-server ·

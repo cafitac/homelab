@@ -28,8 +28,7 @@ spec:
     matchLabels: { app: runner }
   template:
     metadata:
-      # homelab/egress: restricted — 공통 격리의 넓은 나가기 허용(egress-no-host)에서 빠지고 runner-egress 만 따른다
-      labels: { app: runner, homelab/egress: restricted }
+      labels: { app: runner }
     spec:
       enableServiceLinks: false
       initContainers:

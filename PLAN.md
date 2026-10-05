@@ -213,7 +213,7 @@ homelab/
 - P12-05 봇(멈춤) · 콘솔 · Ingress threads.cafitac.com · ServiceMonitor · DB 비밀번호 Secret(무작위로 교체) · 토큰 없는 ServiceAccount (thread-example#35). 노드 kubelet 에 tcp_tw_reuse 허용
 - ⭐ 이전 완료 (2026-10-05 13:00 ~ 13:08, thread-example#36): 쓰기 멈춤 약 6 분, 27GB 재복사 2 분 19 초, 모든 테이블 일치, threads.cafitac.com → 터널 homelab. 옛 VM 셋 멈춤
 - 저장소의 Terraform · vm.sh 삭제, 통합 테스트 DB 를 namespace thread-example-dev 로(thread-example#37 · #38)
-- 남은 것: 옛 VM 디스크(외장 SSD 70G) · 터널 thread-example 삭제(사람이 Mac Studio 에서), tailscale serve(→ 옛 gateway) 정리, Grafana 대시보드 이전, 기준선 재측정
+- 남은 것: 옛 VM 디스크(외장 SSD 70G) · 터널 thread-example 삭제(사람이 Mac Studio 에서), Grafana 대시보드 이전, 기준선 재측정
 
 ### 6 단계 — 정리
 

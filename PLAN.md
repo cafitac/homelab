@@ -215,7 +215,7 @@ homelab/
 - 저장소의 Terraform · vm.sh 삭제, 통합 테스트 DB 를 namespace thread-example-dev 로(thread-example#37 · #38)
 - 옛 VM 4 개 · 외장 SSD 디스크 70G · 터널 thread-example · 토큰 삭제(2026-10-05, 사용자가 실행). 남은 터널: homelab · puri-dev
 - Grafana 대시보드 「thread-example — 운영」을 homelab Grafana 로(ConfigMap · sidecar), postgres · nginx exporter 이전 (thread-example#41)
-- 남은 것: 기준선 재측정
+- ⭐ Kubernetes 기준선(W5, thread-example#42): 무릎 동시 접속 5 만 ~ 6 만, 커넥션 풀 20 · Tomcat 200 이 CPU 보다 먼저. 측정은 운영 DB 를 두고 측정용 DB(postgres-bench)로 잠시 전환 — thread-example 5 단계 끝
 
 ### 6 단계 — 정리
 

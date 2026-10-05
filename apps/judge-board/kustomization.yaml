@@ -17,6 +17,6 @@ resources:
 components:
   - ../../platform/components/isolation
 images:
-  - { name: judge-board-board, newTag: 686d473efee9 }
-  - { name: judge-board-frontend, newTag: 686d473efee9 }
-  - { name: judge-board-runner, newTag: 686d473efee9 }
+  - { name: judge-board-board, newTag: 78c7f3f80f85 }
+  - { name: judge-board-frontend, newTag: 78c7f3f80f85 }
+  - { name: judge-board-runner, newTag: 78c7f3f80f85 }

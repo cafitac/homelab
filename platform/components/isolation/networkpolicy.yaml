@@ -44,3 +44,30 @@ spec:
         - namespaceSelector:
             matchLabels:
               homelab/tier: monitoring
+---
+# ⭐ 나가는 연결: 맥 호스트 · 집 LAN 으로는 못 나간다(2026-10-06).
+#    colima VM 안에서는 192.168.5.2 가 맥의 127.0.0.1 로 이어져, 어느 파드에서나 맥의 내부 전용 서비스
+#    (sshd · whisper-server · 개발 서버 · 다른 VM 의 포워딩 포트)에 닿았다. 맥의 LAN(10.x) · Tailscale(100.64/10) ·
+#    다른 VM 망(192.168.64.x)도 맥이다. 그래서 사설 · CGNAT · 링크로컬을 통째로 막고 둘만 연다:
+#     - 클러스터의 모든 파드(서비스도 파드로 풀린다) — 프로젝트끼리는 위의 들어오는 쪽 기본 거부가 막는다
+#     - 노드(192.168.5.10) — k8s API(10.43.0.1 이 여기로 풀린다)
+#    인터넷은 그대로. 이보다 좁혀야 하는 파드(judge-board 실행기)는 라벨 homelab/egress: restricted 를 달고
+#    자기 정책을 따로 둔다 — 정책은 합쳐지므로 이 넓은 허용에서 빠져야 한다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress-no-host
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: homelab/egress, operator: DoesNotExist }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+    - to:
+        - ipBlock: { cidr: 192.168.5.10/32 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]

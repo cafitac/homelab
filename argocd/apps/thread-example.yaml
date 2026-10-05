@@ -12,6 +12,19 @@ spec:
     repoURL: git@github.com:cafitac/thread-example.git
     targetRevision: agent/stage4-db-foundation
     path: deploy/k8s/overlays/homelab
+    # 실험용 부속 셋은 judge-board 채점 시간에 자리를 내준다(platform/scheduling/priorityclass-preemptible.yaml).
+    # 실행기(7.5→6.5 코어)가 들어갈 자리가 이 셋(4 코어)을 비워야 생긴다 — 그 저장소는 건드리지 않고 여기서 덧댄다.
+    kustomize:
+      patches:
+        - target: { kind: Deployment, name: traffic }
+          patch: |-
+            - { op: add, path: /spec/template/spec/priorityClassName, value: preemptible }
+        - target: { kind: Deployment, name: postgres-test }
+          patch: |-
+            - { op: add, path: /spec/template/spec/priorityClassName, value: preemptible }
+        - target: { kind: Deployment, name: postgres-bench }
+          patch: |-
+            - { op: add, path: /spec/template/spec/priorityClassName, value: preemptible }
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:

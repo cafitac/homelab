@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  백업 PVC 의 덤프를 매일 05:00 VM 밖으로 복사한다(cluster/backup-offload.sh).
+  설치(Mac Studio):
+    cp ~/Project/homelab/cluster/launchd/com.cafitac.backup-offload.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cafitac.backup-offload.plist
+  기록: /Users/cafitac/Library/Logs/backup-offload.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cafitac.backup-offload</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/cafitac/Project/homelab/cluster/backup-offload.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>5</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/cafitac/Library/Logs/backup-offload.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/cafitac/Library/Logs/backup-offload.log</string>
+</dict>
+</plist>

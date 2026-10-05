@@ -99,6 +99,8 @@ homelab/
 - 비밀값: git 에 넣지 않는다. Mac Studio 의 파일에서 `kubectl create secret` 으로 만든다(SOPS · sealed-secrets 는 다른 사람이 쓰게 되면).
 - 적용: ⭐ **최종은 Argo CD GitOps** (사용자 결정 2026-10-05). 0 ~ 1 단계는 `kubectl apply -k` 로 시작하고, 플랫폼이 안정되면 Argo CD 를 클러스터에 올려 `homelab` 저장소를 원본으로 삼는다(App of Apps). 이후 프로젝트는 처음부터 Argo CD Application 으로 옮긴다.
 - 백업: DB 마다 `pg_dump` CronJob → 백업 PVC(SSD). 지금 compose 의 backup 컨테이너(매일 04:00 · 7 일 보존)를 그대로 옮긴다.
+  - VM 밖 사본(2026-10-06): 백업 PVC 는 DB 와 같은 VM 디스크 이미지 안이라 이미지가 깨지면 함께 사라진다. `cluster/backup-offload.sh` 를 launchd(`cluster/launchd/com.cafitac.backup-offload.plist`, 매일 05:00)가 돌려 덤프를 **내장 디스크** `~/Backups/k8s/<ns>` 로 복사한다(30 일). 기록 `~/Library/Logs/backup-offload.log`. 내장 디스크인 이유는 스크립트 머리말.
+  - DB · 백업 · 데이터 PV 는 `Retain`(judge-board · interview-coach, 손으로 patch — PVC 가 지워져도 디스크는 남는다). 새 PVC 는 `local-path-retain` 을 쓴다. hf-cache · docker 캐시는 다시 만들 수 있어 `Delete` 그대로.
 
 ## 4. 단계
 

@@ -5,4 +5,5 @@ resources:
   - namespaces/platform.yaml
   - traefik/helmchartconfig.yaml
   - storage/local-path-retain.yaml
+  - scheduling/priorityclass-preemptible.yaml
   - cloudflared

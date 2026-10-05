@@ -1,0 +1,12 @@
+# 채점 시간에 자리를 내줄 실험용 부속 — 우선순위가 기본(0)보다 낮아, 기본 우선순위의 파드가 자리를 못 찾으면 밀려난다.
+# 지금 쓰는 곳: thread-example 의 traffic · postgres-test · postgres-bench(argocd/apps/thread-example.yaml 패치).
+# judge-board 실행기(runner)를 올리면 이 셋이 잠시 내려가고, 실행기를 0 으로 내리면 다시 뜬다.
+# 공개 서비스(console · app · gateway · postgres)와 다른 프로젝트는 기본(0)이라 밀리지 않는다 — 같은 우선순위끼리는 밀어내지 않는다.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: preemptible
+value: -100
+globalDefault: false
+preemptionPolicy: Never   # 이 파드들이 남을 밀어내지는 않는다
+description: "실험용 부속 — 채점 시간에 judge-board 실행기에게 자리를 내준다"

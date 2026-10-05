@@ -1,0 +1,34 @@
+# 실행기 파드의 나가는 길을 좁힌다 — 참가자 코드가 이 파드의 dockerd 안에서 돈다.
+#
+# 막지 않으면(2026-10-06 확인) 파드에서 192.168.5.2(맥 호스트의 127.0.0.1 로 이어진다)로 맥의 sshd · whisper-server ·
+# 개발 서버 · 다른 colima VM 의 포워딩 포트가 열려 있었고, 클러스터 안의 judge-board DB · prometheus · argocd-server ·
+# k8s API · kubelet 에도 닿았다.
+#
+# 허용: 채점판(board:8780) · 클러스터 DNS · 인터넷(이미지 · 의존성 받기 — go mod · npm · gradle).
+# 사설 대역(10/8 — 파드 · 서비스, 172.16/12, 192.168/16 — VM · 맥 · 집 LAN), 링크 로컬, CGNAT 은 막는다.
+# 파드 안의 docker 브리지(172.17.x)는 파드 네트워크 안쪽이라 이 정책과 상관없다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runner-egress
+spec:
+  podSelector:
+    matchLabels: { app: runner }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { app: board }
+      ports: [{ port: 8780, protocol: TCP }]
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]

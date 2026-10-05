@@ -12,6 +12,7 @@ resources:
   - board.yaml
   - frontend.yaml
   - runner.yaml
+  - runner-egress.yaml
   - backup.yaml
 components:
   - ../../platform/components/isolation

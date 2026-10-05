@@ -67,13 +67,22 @@ fi
 # ⭐ kubelet static CPU manager — Guaranteed 파드의 정수 코어를 독점시킨다(측정 · 채점이 이웃 부하에 흔들리지 않게).
 #    코어 0-1 은 시스템 · k3s 몫으로 남긴다. ⚠️ k3s 인자(--k3s-arg)는 처음 설치 때만 들어가므로 설정 파일로 둔다.
 #    정책을 바꾸면 kubelet 의 CPU 상태 파일을 지우고 다시 띄워야 한다(그대로 두면 kubelet 이 시작을 거부한다)
+# allowed-unsafe-sysctls — 앞의 둘은 k3s 기본값(이 인자가 덮어쓰므로 같이 적는다).
+#   tcp_tw_reuse: thread-example 봇이 연결을 많이 열고 닫는다(TIME_WAIT 재사용). 파드 netns 안에서만 바뀐다
 K3S_CONFIG='kubelet-arg:
   - cpu-manager-policy=static
-  - reserved-cpus=0-1'
-if [ "$(colima ssh -p "$PROFILE" -- sudo cat /etc/rancher/k3s/config.yaml 2>/dev/null)" != "$K3S_CONFIG" ]; then
+  - reserved-cpus=0-1
+  - allowed-unsafe-sysctls=net.ipv4.ip_forward,net.ipv6.conf.all.forwarding,net.ipv4.tcp_tw_reuse'
+current=$(colima ssh -p "$PROFILE" -- sudo cat /etc/rancher/k3s/config.yaml 2>/dev/null || true)
+if [ "$current" != "$K3S_CONFIG" ]; then
   printf '%s\n' "$K3S_CONFIG" | colima ssh -p "$PROFILE" -- sudo tee /etc/rancher/k3s/config.yaml >/dev/null
-  colima ssh -p "$PROFILE" -- sh -c 'sudo systemctl stop k3s && sudo rm -f /var/lib/kubelet/cpu_manager_state && sudo systemctl start k3s'
-  echo "k3s: static CPU manager 적용"
+  # ⚠️ CPU manager 정책이 바뀔 때만 상태 파일을 지운다 — 지우면 독점 코어 배정이 다시 시작된다
+  if printf '%s' "$current" | grep -q cpu-manager-policy=static; then
+    colima ssh -p "$PROFILE" -- sudo systemctl restart k3s
+  else
+    colima ssh -p "$PROFILE" -- sh -c 'sudo systemctl stop k3s && sudo rm -f /var/lib/kubelet/cpu_manager_state && sudo systemctl start k3s'
+  fi
+  echo "k3s: kubelet 설정 적용"
 fi
 
 # kubeconfig — 전역 ~/.kube/config 를 건드리지 않고 따로 둔다. KUBECONFIG=~/.kube/homelab.yaml 로 쓴다

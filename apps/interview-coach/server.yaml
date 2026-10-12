@@ -1,4 +1,5 @@
 # 면접 서버(Kotlin · Spring). LLM 은 Claude Code CLI(CLAUDE_CODE_OAUTH_TOKEN, Secret server-env)를 하위 프로세스로 부른다
+# 두 번째 계정(선택): server/.env 에 CLAUDE_CODE_OAUTH_TOKEN_FALLBACK 을 넣고 secrets.sh → 서버 재시작. 첫 계정이 사용량 한도 · 인증으로 막히면 쓴다
 apiVersion: apps/v1
 kind: Deployment
 metadata:

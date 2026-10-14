@@ -46,9 +46,10 @@ spec:
             failureThreshold: 6
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
+          # JVM(MaxRAMPercentage=65) 옆에서 Claude CLI(node) 가 뜬다 — 1Gi 에선 보강 준비 중 OOMKilled(2026-10-14)
           resources:
-            requests: { cpu: 200m, memory: 512Mi }
-            limits: { cpu: "2", memory: 1Gi }
+            requests: { cpu: 200m, memory: 768Mi }
+            limits: { cpu: "2", memory: 2560Mi }
       volumes:
         # Claude CLI 작업 폴더(CLAUDE_WORKDIR=/tmp/...)
         - name: tmp

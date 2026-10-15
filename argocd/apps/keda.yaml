@@ -1,0 +1,27 @@
+# KEDA — 일감이 있을 때만 무거운 워크로드를 0 → 1 로 올린다(지금은 judge-board 실행기).
+# 차트 값은 이 저장소(platform/keda/values.yaml). CRD 가 커서 ServerSideApply 로 넣는다
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keda
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://kedacore.github.io/charts
+      chart: keda
+      targetRevision: 2.21.0
+      helm:
+        releaseName: keda
+        valueFiles: [$values/platform/keda/values.yaml]
+    - repoURL: https://github.com/cafitac/homelab.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keda
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

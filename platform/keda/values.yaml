@@ -1,0 +1,11 @@
+# KEDA 차트 값. 이 클러스터에서 KEDA 가 하는 일은 judge-board 실행기 하나를 10 초마다 묻는 것뿐이라 작게 둔다.
+resources:
+  operator:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  metricServer:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  webhooks:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 256Mi }

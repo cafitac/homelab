@@ -11,7 +11,7 @@ spec:
     path: apps/judge-board
   destination:
     server: https://kubernetes.default.svc
-  # runner 는 채점 시간에만 손으로 올린다 — 그 값을 selfHeal 이 0 으로 되돌리지 않게
+  # runner 의 replicas 는 KEDA 가 정한다(runner-autoscale.yaml) — 그 값을 selfHeal 이 0 으로 되돌리지 않게
   ignoreDifferences:
     - group: apps
       kind: StatefulSet

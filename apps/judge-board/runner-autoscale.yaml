@@ -1,0 +1,59 @@
+# 실행기 자동 켜기/끄기 — 공식 채점 일감이 대기 · 실행 중이면 1, 다 끝나고 5 분이 지나면 0.
+# ⭐ 실행기는 CPU 6 코어를 독점(Guaranteed)하므로 평소엔 0 이어야 다른 서비스 몫을 막지 않는다. 예전엔 채점 시간에
+#    사람이 scale 했고, 그 사이 들어온 제출은 "실행기 꺼짐" 으로 계속 기다렸다.
+# ⭐ running 도 센다 — 채점 도중에 0 으로 내려가 판이 끊기지 않게. 실행기가 죽어 running 으로 남은 일감은 채점판이
+#    다음 일감을 집을 때(expireStale · releaseAbandoned) 실패로 닫으므로, 그대로 두어도 영원히 1 로 남지 않는다.
+# ⭐ 실행기는 공식(WORKER_KIND=official)만 집는다 — 연습 일감까지 세면 아무도 집지 않는 일감 때문에 계속 켜져 있다.
+# Argo CD 는 runner 의 replicas 를 무시한다(argocd/apps/judge-board.yaml ignoreDifferences) — KEDA 가 정한 값을 되돌리지 않는다
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: runner
+  annotations:
+    # KEDA CRD 가 아직 없을 때(처음 한 번) judge-board 동기화 전체가 실패하지 않게
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: StatefulSet, name: runner }
+  minReplicaCount: 0
+  maxReplicaCount: 1          # 한 파드 = 공식 채점 한 줄. 줄을 늘리려면 BOARD_OFFICIAL_LANES 와 쿼터를 같이 본다
+  pollingInterval: 10
+  cooldownPeriod: 300
+  triggers:
+    - type: postgresql
+      metadata:
+        host: db.judge-board.svc.cluster.local
+        port: "5432"
+        userName: board
+        dbName: board
+        sslmode: disable
+        query: "SELECT count(*) FROM jobs WHERE kind = 'official' AND status IN ('queued', 'running')"
+        targetQueryValue: "1"
+        activationTargetQueryValue: "0"
+      authenticationRef: { name: judge-db }
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: judge-db
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  secretTargetRef:
+    - { parameter: password, name: board-env, key: BOARD_DB_PASSWORD }
+---
+# 격리 규칙(default-deny-ingress)은 다른 namespace 에서 들어오는 연결을 막는다. KEDA 가 큐 길이를 묻는 DB 5432 만 연다
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-from-keda
+spec:
+  podSelector:
+    matchLabels: { app: db }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: keda }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: keda-operator }
+      ports: [{ port: 5432, protocol: TCP }]

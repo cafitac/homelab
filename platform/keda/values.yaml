@@ -1,11 +1,13 @@
 # KEDA 차트 값. 이 클러스터에서 KEDA 가 하는 일은 judge-board 실행기 하나를 10 초마다 묻는 것뿐이라 작게 둔다.
+# ⚠️ requests 를 아주 작게(10m) 둔다 — 노드 14 코어 중 실행기(6.5 코어)가 들어갈 자리가 preemptible 부속을 밀어내고도
+#    0.1 코어 남짓이다. 50m · 50m · 20m 으로 뒀더니 그 여유를 넘겨 실행기가 Insufficient cpu 로 Pending 이었다(2026-10-15).
 resources:
   operator:
-    requests: { cpu: 50m, memory: 128Mi }
+    requests: { cpu: 10m, memory: 128Mi }
     limits: { cpu: 500m, memory: 512Mi }
   metricServer:
-    requests: { cpu: 50m, memory: 64Mi }
+    requests: { cpu: 10m, memory: 64Mi }
     limits: { cpu: 500m, memory: 256Mi }
   webhooks:
-    requests: { cpu: 20m, memory: 64Mi }
+    requests: { cpu: 10m, memory: 64Mi }
     limits: { cpu: 200m, memory: 256Mi }

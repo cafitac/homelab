@@ -18,6 +18,6 @@ resources:
 components:
   - ../../platform/components/isolation
 images:
-  - { name: judge-board-board, newTag: c7470813235d }
-  - { name: judge-board-frontend, newTag: c7470813235d }
-  - { name: judge-board-runner, newTag: c7470813235d }
+  - { name: judge-board-board, newTag: 615682cc4299 }
+  - { name: judge-board-frontend, newTag: 615682cc4299 }
+  - { name: judge-board-runner, newTag: 615682cc4299 }

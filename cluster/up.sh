@@ -52,8 +52,24 @@ relocate() {
 #    --k3s-listen-port 를 나중에 바꿔도 이미 설치된 k3s 에는 적용되지 않는다(10/5 확인) — 원격 kubectl 은 실제 포트를 읽어 쓴다
 # 코어 수를 바꾸면(12 → 16, 2026-10-05 judge-board 공식 채점 몫) 한 번 내렸다 올린다
 # 디스크를 늘리면(500 → 1000GB, 2026-10-05 thread-example DB) 같다
-if colima status -p "$PROFILE" >/dev/null 2>&1 && { ! grep -qE '^cpu: 16$' "$HOME/.colima/$PROFILE/colima.yaml" \
-    || ! grep -qE '^disk: 1000$' "$HOME/.colima/$PROFILE/colima.yaml"; }; then
+# ⭐ 컨테이너 로그 회전 — docker 런타임이라 kubelet 의 로그 회전(containerLogMaxSize)이 듣지 않는다. dockerd 기본값은
+#    회전 없음이라 thread-example 요청 로그(app · gateway · postgres)가 13 일에 630GB 를 채웠다(2026-10-18, 디스크 81%).
+#    colima.yaml 의 docker: 가 VM 의 /etc/docker/daemon.json 이 된다. 새로 만드는 컨테이너부터 적용 → 바꾸면 한 번 내렸다 올린다
+COLIMA_YAML=$HOME/.colima/$PROFILE/colima.yaml
+if [ -f "$COLIMA_YAML" ] && ! grep -qE '^    max-size: 100m$' "$COLIMA_YAML"; then
+  grep -qE '^docker: \{\}$' "$COLIMA_YAML" || { echo "$COLIMA_YAML 의 docker: 가 비어 있지 않다 — 손으로 log-opts 를 넣는다" >&2; exit 1; }
+  python3 - "$COLIMA_YAML" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+s = s.replace("\ndocker: {}\n", '\ndocker:\n  log-driver: json-file\n  log-opts:\n    max-size: 100m\n    max-file: "3"\n', 1)
+open(p, "w").write(s)
+PY
+  echo "colima: 컨테이너 로그 회전(100m × 3) 설정"
+fi
+if colima status -p "$PROFILE" >/dev/null 2>&1 && { ! grep -qE '^cpu: 16$' "$COLIMA_YAML" \
+    || ! grep -qE '^disk: 1000$' "$COLIMA_YAML" \
+    || ! colima ssh -p "$PROFILE" -- sudo grep -q '"max-size"' /etc/docker/daemon.json; }; then
   colima stop -p "$PROFILE"
 fi
 if ! colima status -p "$PROFILE" >/dev/null 2>&1; then

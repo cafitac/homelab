@@ -33,7 +33,7 @@ server:
 
 controller:
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
+    requests: { cpu: 100m, memory: 640Mi }
     limits: { cpu: "1", memory: 1Gi }
 
 repoServer:

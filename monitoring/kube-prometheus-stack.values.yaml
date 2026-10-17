@@ -20,7 +20,7 @@ prometheus:
     retention: 15d
     retentionSize: 25GB
     resources:
-      requests: { cpu: 200m, memory: 1Gi }
+      requests: { cpu: 200m, memory: 1536Mi }
       limits: { cpu: "1", memory: 3Gi }
     storageSpec:
       volumeClaimTemplate:
@@ -76,7 +76,7 @@ grafana:
     userKey: admin-user
     passwordKey: admin-password
   resources:
-    requests: { cpu: 50m, memory: 128Mi }
+    requests: { cpu: 50m, memory: 512Mi }
     limits: { cpu: 500m, memory: 512Mi }
 
 prometheusOperator:

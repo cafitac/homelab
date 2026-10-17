@@ -44,7 +44,8 @@ spec:
             - { name: models, mountPath: /models }
           resources:
             # 계산 중 4.3GiB 까지 올라간다(interview-coach bef3ecf)
-            requests: { cpu: 500m, memory: 3Gi }
+            # 요청은 평소 보장량: CPU 7일 p95 32m · 최대 35m(2026-10-18), 메모리 7일 최대 3.0GiB — 상한은 그대로
+            requests: { cpu: 100m, memory: 3584Mi }
             limits: { cpu: "4", memory: 7Gi }
       volumes:
         - name: models

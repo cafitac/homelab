@@ -24,7 +24,7 @@ spec:
             tcpSocket: { port: 3000 }
             periodSeconds: 10
           resources:
-            requests: { cpu: 50m, memory: 192Mi }
+            requests: { cpu: 50m, memory: 320Mi }
             limits: { cpu: "1", memory: 512Mi }
 ---
 apiVersion: v1

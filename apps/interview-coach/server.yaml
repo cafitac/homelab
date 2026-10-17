@@ -48,7 +48,8 @@ spec:
             - { name: tmp, mountPath: /tmp }
           # JVM(MaxRAMPercentage=65) 옆에서 Claude CLI(node) 가 뜬다 — 1Gi 에선 보강 준비 중 OOMKilled(2026-10-14)
           resources:
-            requests: { cpu: 200m, memory: 768Mi }
+            # 메모리 7일 최대 1.3GiB(2026-10-18) — 요청이 이보다 낮으면 노드 압박 때 먼저 쫓겨난다
+            requests: { cpu: 200m, memory: 1536Mi }
             limits: { cpu: "2", memory: 2560Mi }
       volumes:
         # Claude CLI 작업 폴더(CLAUDE_WORKDIR=/tmp/...)

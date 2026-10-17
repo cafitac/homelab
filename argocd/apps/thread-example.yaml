@@ -11,7 +11,8 @@ spec:
   source:
     repoURL: git@github.com:cafitac/thread-example.git
     targetRevision: agent/stage4-db-foundation
-    path: deploy/k8s/overlays/homelab
+    # ⭐ 평소 = 전시 모드(요청만 실사용에 맞춤). 측정할 때만 deploy/k8s/overlays/homelab(측정 예산 · 코어 독점)으로 바꾼다 — 그 저장소 ADR 0037
+    path: deploy/k8s/overlays/homelab-showcase
     # 실험용 부속(traffic · postgres-test)은 judge-board 채점 시간에 자리를 내준다(platform/scheduling/priorityclass-preemptible.yaml).
     # 실행기(7.5→6.5 코어)가 들어갈 자리가 이 둘(traffic 2 · postgres-test 1 코어)을 비워야 생긴다 — 그 저장소는 건드리지 않고 여기서 덧댄다.
     kustomize:

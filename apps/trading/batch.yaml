@@ -1,0 +1,64 @@
+# tradelab 쓰기 Job 의 틀 — suspend: true 라 스스로 돌지 않는다. 실행은 trading-system 의 deploy/k8s/job.sh 가
+# 이 CronJob 에서 Job tradelab-writer 를 하나 만든다(한 번에 하나가 쓰기 자리 — SQLite 쓰는 쪽은 하나뿐이어야 한다).
+# 파드 계약(trading-system deploy/k8s/README.md "Pod contract for D4"):
+#  - command 를 덮지 않는다(엔트리포인트가 python -m tradelab.batch). args 는 job.sh 가 채운다
+#  - ~/.tradelab/env 는 메모리 emptyDir(1Mi): 엔트리포인트가 Secret 파일을 0600 · 실행 uid 소유로 여기 복사한다
+#  - ~/.tradelab/claude-config 는 마운트하지 않는다: emptyDir 은 root 소유라 Claude 게이트웨이가 거부한다(엔트리포인트가 데이터 볼륨에 만든다)
+#  - 환경변수에 ANTHROPIC_* · CLAUDE_CODE_USE_* · 자격 증명을 두지 않는다(엔트리포인트가 시작을 거부한다)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tradelab-batch
+spec:
+  suspend: true
+  schedule: "0 0 1 1 *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      # 로그는 볼륨(~/.tradelab/logs)에도 남는다. 끝난 Job 은 job.sh 가 다음 실행 때 지우고, 아니면 7일 뒤 사라진다
+      ttlSecondsAfterFinished: 604800
+      template:
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: batch
+              image: trading-batch
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: data, mountPath: /home/app/.tradelab }
+                - { name: env, mountPath: /home/app/.tradelab/env }
+                - { name: tmp, mountPath: /tmp }
+                - { name: claude, mountPath: /secrets/claude, readOnly: true }
+                - { name: kis, mountPath: /secrets/kis, readOnly: true }
+              resources:
+                requests: { cpu: 500m, memory: 1536Mi }
+                limits: { cpu: "2", memory: 2560Mi }
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: trading-data }
+            - name: env
+              emptyDir: { medium: Memory, sizeLimit: 1Mi }
+            - name: tmp
+              emptyDir: { sizeLimit: 1Gi }
+            # optional: Secret 이 아직 없어도 파드는 뜬다 — Secret 이 필요 없는 명령(report · cases · import-wait)은 돌고,
+            # 필요한 명령은 엔트리포인트가 빈 디렉터리를 보고 exit 78 로 멈춘다(secrets.sh 를 먼저 돌린다)
+            - name: claude
+              secret: { secretName: tradelab-claude, optional: true }
+            - name: kis
+              secret: { secretName: tradelab-kis, optional: true }

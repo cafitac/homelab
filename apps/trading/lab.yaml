@@ -1,0 +1,96 @@
+# trading.cafitac.com — 읽기 전용 대시보드(FastAPI + React 정적 파일 한 프로세스). Secret 을 하나도 마운트하지 않는다.
+# 앞에는 Cloudflare Access 가 있고, API 도 Cf-Access-Jwt-Assertion 을 직접 검증한다(없거나 틀리면 401, 검증 불가면 503).
+# 이미지 갱신: trading-system 저장소에서 deploy/k8s/release.sh — 출력된 태그를 kustomization.yaml 의 newTag 에 넣는다
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  selector:
+    matchLabels: { app: lab }
+  template:
+    metadata:
+      labels: { app: lab }
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: lab
+          image: trading-lab
+          imagePullPolicy: IfNotPresent
+          env:
+            # 비밀이 아니다(Access 앱 식별자 · 팀 도메인). 둘 중 하나라도 없으면 API 는 503 으로 닫힌다
+            - { name: TRADELAB_ACCESS_AUD, value: 768aa9e9fb11ff5740b4e5055ec8dbbb45d11f552e8f2cec312114490cce4dab }
+            - { name: TRADELAB_ACCESS_TEAM_DOMAIN, value: cafitac.cloudflareaccess.com }
+            - { name: TRADELAB_LAB_DB, value: /home/app/.tradelab/lab.sqlite }
+            - { name: TRADELAB_MARKET_DB, value: /home/app/.tradelab/market_data.sqlite }
+            # ⚠️ kustomization.yaml 의 trading-lab newTag 와 같아야 한다(이미지에도 같은 값이 구워져 있다)
+            - { name: TRADELAB_BUILD_SHA, value: 8b36e39a7708 }
+          ports: [{ containerPort: 8080 }]
+          startupProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            # ⚠️ 볼륨은 쓰기 가능으로 마운트한다 — SQLite 를 mode=ro 로만 연다(설계 07 "Read-only open mode").
+            #    읽기 전용 마운트면 쓰는 쪽이 닫으며 -wal/-shm 을 지운 뒤 읽는 쪽이 다시 열지 못한다(2026-10-19 재현).
+            #    API 는 DB 파일에 쓰지 않는다. 읽기 연결이 만드는 -shm/-wal 도 같은 uid(10001)라 쓰기 Job 을 막지 않는다
+            - { name: data, mountPath: /home/app/.tradelab }
+            # 설계 07 은 reports/ 를 subPath readOnly 로 한 번 더 덮자고 했지만 뺐다: 출고된 API 는 reports/ 를 읽지 않고(labapi 에 참조 없음),
+            # 없는 subPath 는 kubelet 이 root 소유로 만들어 쓰기 Job(uid 10001)을 막는다
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: trading-data }
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lab
+spec:
+  type: ClusterIP
+  selector: { app: lab }
+  ports: [{ port: 8080, targetPort: 8080 }]
+---
+# 공개 주소 감시: monitoring/probes.yaml 의 blackbox Probe 대상에 https://trading.cafitac.com 을 넣는 일은
+# D4 소유 경로(apps/trading, argocd/apps/trading.yaml) 밖이라 후속 homelab PR 로 남긴다(backup-offload 대상 추가와 함께).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lab
+spec:
+  rules:
+    - host: trading.cafitac.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: lab, port: { number: 8080 } }

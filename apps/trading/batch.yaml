@@ -47,8 +47,9 @@ spec:
                 - { name: claude, mountPath: /secrets/claude, readOnly: true }
                 - { name: kis, mountPath: /secrets/kis, readOnly: true }
               resources:
-                requests: { cpu: 500m, memory: 1536Mi }
-                limits: { cpu: "2", memory: 2560Mi }
+                # parallel --max 6: 여러 tradelab 프로세스 + 결정마다 claude CLI. 실측(AD18) 뒤 D5 에서 조정
+                requests: { cpu: 500m, memory: 3Gi }
+                limits: { cpu: "4", memory: 6Gi }
           volumes:
             - name: data
               persistentVolumeClaim: { claimName: trading-data }

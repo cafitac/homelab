@@ -1,0 +1,16 @@
+# 상시 requests 는 lab 50m/192Mi 뿐. 나머지 몫은 쓰기 Job(tradelab-writer 500m/1536Mi · 한도 2/2560Mi)과
+# 백업(20m/64Mi · 200m/128Mi), lab 롤링 업데이트 때의 두 번째 파드(50m/192Mi)다.
+# 최악의 합: requests 620m/1984Mi, limits 3.2/3712Mi — 실측(AD8) 뒤 줄이거나 늘린다.
+# 저장은 PVC 둘(trading-data 10Gi + trading-backups 5Gi)로 꽉 찬다 — 셋째 PVC · 확장은 같은 PR 에서 이 쿼터를 함께 바꾼다
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 2560Mi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+    requests.storage: 15Gi
+    persistentvolumeclaims: "2"

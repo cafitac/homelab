@@ -1,0 +1,82 @@
+# 매일 04:15(서울) lab.sqlite · market_data.sqlite 를 SQLite backup API 로 일관되게 떠 두고(+ reports/ 묶음) 14 일치만 남긴다.
+# 스크립트: scripts/backup.py(아래 ConfigMap, kustomization 의 configMapGenerator). trading-lab 이미지를 command 로 덮어 쓴다 — Secret 없음.
+# 쓰기 자리(tradelab-writer)를 잡지 않는다: 원본은 mode=ro 로 열어 읽을 뿐이고, 실패한 날은 오래된 백업을 지우지 않는다.
+# 되살리기(백업본은 파일 하나로 닫힌 DELETE-journal 복사본이다). 원본은 WAL 모드라서, 누가 DB 를 열어 둔 채로 본문만
+# 덮으면 옛 -wal 프레임이 새 파일 위에 재생돼 DB 가 깨진다. 반드시 이 순서로, 사람 손으로:
+#   1) Argo 자동 동기화를 root 와 trading 둘 다 끈다(root 가 trading 의 syncPolicy 를, trading 이 replicas 를 되돌리므로):
+#      kubectl -n argocd patch application root --type json -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
+#      kubectl -n argocd patch application trading --type json -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
+#   2) kubectl -n trading patch cronjob backup -p '{"spec":{"suspend":true}}' (04:15 백업도 DB 를 연다)
+#   3) kubectl -n trading scale deploy/lab --replicas=0 후 pod 가 사라질 때까지 기다린다.
+#   4) tradelab-writer Job 과 backup Job 이 하나도 돌고 있지 않은지 확인한다(kubectl -n trading get jobs,pods).
+#   5) 현재 <db>, <db>-wal, <db>-shm 을 함께 다른 이름으로 옮겨 보관한다(-wal 에 최근 커밋이 있을 수 있다).
+#   6) <db>-wal, <db>-shm 이 남아 있지 않은지 확인한 뒤 백업본을 <db> 로 복사한다(uid/gid 10001, 0600).
+#   6b) 백업본은 DELETE-journal 이므로, 같은 임시 pod 에서 WAL 로 되돌린다:
+#      python3 -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute('PRAGMA journal_mode=WAL').fetchone()); c.close()" <db>
+#      (tradelab 의 lab DB 연결도 열 때 WAL 을 켜지만, market_data.sqlite 와 첫 reader 를 위해 명시적으로 맞춘다.)
+#   7) root 의 자동 동기화만 되돌린다. root 가 trading 의 syncPolicy 를, trading 이 lab replicas 1 과
+#      backup suspend false 를 git 대로 되돌린다:
+#      kubectl -n argocd patch application root --type merge -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
+#      그 뒤 kubectl -n trading get deploy/lab cronjob/backup 으로 되돌아왔는지 확인한다.
+#   lab.sqlite 와 market_data.sqlite 모두 같은 절차다. 이 작업은 trading-data 를 마운트한 임시 pod(uid 10001)에서 한다.
+# 디스크 밖 사본: 이 PVC 는 데이터와 같은 VM 디스크 이미지에 있다. cluster/backup-offload.sh 에 trading 대상
+# (PVC trading-backups, *.sqlite · *.tar.gz)을 넣는 일은 이 PR 범위 밖이라 후속으로 남긴다. 그 전까지 MacBook 의
+# 이관 전 원본(import.sh seal 로 읽기 전용)이 디스크 밖 사본 역할을 한다.
+# 크기(2026-10-19 MacBook 실측): lab.sqlite 54MB, market_data.sqlite 7MB, reports 1.3MB → 하루 약 62MB, 14 일 약 0.9GB (5Gi 안).
+# 백업 확인: kubectl -n trading create job --from=cronjob/backup backup-now
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: "15 4 * * *"  # backup-offload(launchd 05:00)보다 먼저 끝나도록
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 604800
+      template:
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: backup
+              image: trading-lab
+              imagePullPolicy: IfNotPresent
+              command: [python, /scripts/backup.py]
+              env:
+                - { name: BACKUP_SRC, value: /home/app/.tradelab }
+                - { name: BACKUP_DST, value: /backups }
+                - { name: BACKUP_KEEP_DAYS, value: "14" }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                # 볼륨은 쓰기 가능으로 마운트하지만 DB 는 mode=ro 로만 연다(lab.yaml 의 같은 이유). 읽기 연결이 만드는 -shm/-wal 외에는 아무것도 쓰지 않는다
+                - { name: data, mountPath: /home/app/.tradelab }
+                - { name: backups, mountPath: /backups }
+                - { name: scripts, mountPath: /scripts, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+              resources:
+                requests: { cpu: 20m, memory: 64Mi }
+                limits: { cpu: 200m, memory: 128Mi }
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: trading-data }
+            - name: backups
+              persistentVolumeClaim: { claimName: trading-backups }
+            - name: scripts
+              configMap: { name: backup-script }
+            - name: tmp
+              emptyDir: { sizeLimit: 64Mi }

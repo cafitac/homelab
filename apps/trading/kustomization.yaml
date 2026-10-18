@@ -1,0 +1,25 @@
+# trading.cafitac.com — tradelab 대시보드(읽기 전용 FastAPI + React) · 쓰기 Job 틀 · 백업. 앞단은 Cloudflare Access.
+# 이미지 갱신: trading-system 저장소에서 deploy/k8s/release.sh — 출력된 두 newTag(같은 태그)를 아래에 넣는다.
+#   lab.yaml 의 TRADELAB_BUILD_SHA 도 같은 값으로 바꾼다
+# 비밀값: secrets.sh(Mac Studio, 사용자가 손으로) — 저장소에 없다
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: trading
+resources:
+  - namespace.yaml
+  - quota.yaml
+  - data.yaml
+  - lab.yaml
+  - batch.yaml
+  - backup.yaml
+components:
+  - ../../platform/components/isolation
+configMapGenerator:
+  - name: backup-script
+    files:
+      - backup.py=scripts/backup.py
+images:
+  - name: trading-lab
+    newTag: 8b36e39a7708        # image ID sha256:7a7d5e467a72f36de605f3016399a7b2788ada4cf75a3866c5b062edf81aef5c
+  - name: trading-batch
+    newTag: 8b36e39a7708        # image ID sha256:89af44925df7ed1a6ef0aae10f3d40b19b7b4ac56ad935bd03bad21a8b59d280

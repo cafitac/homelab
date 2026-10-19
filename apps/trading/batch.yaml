@@ -46,6 +46,7 @@ spec:
                 - { name: tmp, mountPath: /tmp }
                 - { name: claude, mountPath: /secrets/claude, readOnly: true }
                 - { name: kis, mountPath: /secrets/kis, readOnly: true }
+                - { name: toss, mountPath: /secrets/toss, readOnly: true }
               resources:
                 # parallel --max 6: 여러 tradelab 프로세스 + 결정마다 claude CLI. 실측(AD18) 뒤 D5 에서 조정
                 requests: { cpu: 500m, memory: 3Gi }
@@ -63,3 +64,6 @@ spec:
               secret: { secretName: tradelab-claude, optional: true }
             - name: kis
               secret: { secretName: tradelab-kis, optional: true }
+            # 토스증권 조회 전용 키(toss 명령만 사용) — S3T. 주문 경로는 없다
+            - name: toss
+              secret: { secretName: tradelab-toss, optional: true }

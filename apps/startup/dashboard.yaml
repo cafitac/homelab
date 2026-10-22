@@ -1,0 +1,86 @@
+# startup.cafitac.com — 창업 연구실 읽기 전용 대시보드(산업 지도 · 아이디어 검증 기록 · 후보 · 보고서). 표준 라이브러리 HTTP 서버 하나.
+# 앞에는 Cloudflare Access(GitHub 로그인)가 있고, 앱도 Cf-Access-Jwt-Assertion 을 직접 검증한다(trading 과 같은 방식):
+#   없거나 틀리면 401, ACCESS_AUD · ACCESS_TEAM_DOMAIN 이 비어 있거나 키를 못 받으면 503 으로 닫힌다. /healthz 만 열려 있다.
+# ⚠️ ACCESS_AUD 는 Cloudflare Zero Trust 에서 startup.cafitac.com Access 앱을 만든 뒤 그 Application Audience(AUD) 값을 넣는다(비밀 아님).
+# 이미지: 연구실 저장소 lab-v2/dashboard/build.sh(Mac Studio) — 출력 태그를 kustomization.yaml newTag 에 넣는다.
+# 볼륨은 쓰기 가능으로 마운트한다 — sync.py 가 같은 파드에 kubectl exec 로 tar 를 풀어 넣기 때문. 앱은 /data 에 쓰지 않는다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+spec:
+  replicas: 1
+  strategy:
+    # RWO PVC 하나를 쓰므로 새 파드를 먼저 띄우지 않는다
+    type: Recreate
+  selector:
+    matchLabels: { app: dashboard }
+  template:
+    metadata:
+      labels: { app: dashboard }
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: dashboard
+          image: startup-dashboard
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: ACCESS_AUD, value: "" }
+            - { name: ACCESS_TEAM_DOMAIN, value: cafitac.cloudflareaccess.com }
+          ports: [{ containerPort: 8080 }]
+          startupProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 30m, memory: 96Mi }
+            limits: { cpu: 300m, memory: 256Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: startup-data }
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+spec:
+  selector: { app: dashboard }
+  ports: [{ port: 8080, targetPort: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dashboard
+spec:
+  rules:
+    - host: startup.cafitac.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: dashboard, port: { number: 8080 } }

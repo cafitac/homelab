@@ -1,6 +1,6 @@
 # startup.cafitac.com — 창업 연구실 읽기 전용 대시보드. 앞단은 Cloudflare Access(GitHub 로그인).
-# 이미지 갱신: 연구실 저장소(product-growth-lab)의 lab-v2/dashboard/build.sh(Mac Studio) — 출력 태그를 아래 newTag 에 넣는다.
-# 데이터: PVC startup-data 에 lab-v2/dashboard/sync.py 가 밀어 넣는다(호스트 폴더 마운트 없음).
+# 이미지 갱신: 연구실 저장소(cafitac/product-growth-lab)의 main 병합 → Actions(Mac Studio 러너) deploy/ci-deploy.sh 가 두 newTag 를 봇 커밋한다.
+# 데이터: PVC lab — 조사 Job(lab-run)이 쓰고 대시보드가 읽는다(호스트 폴더 마운트 없음).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: startup
@@ -9,8 +9,11 @@ resources:
   - quota.yaml
   - data.yaml
   - dashboard.yaml
+  - lab-run.yaml
 components:
   - ../../platform/components/isolation
 images:
+  - name: startup-lab
+    newTag: d097157441de
   - name: startup-dashboard
-    newTag: 48661cf30164
+    newTag: d097157441de

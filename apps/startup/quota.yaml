@@ -1,13 +1,14 @@
-# 상시 requests 는 dashboard 30m/96Mi 하나. 롤링 업데이트 때 두 번째 파드 몫까지.
+# 상시 requests 는 dashboard 30m/96Mi. 조사 Job(lab-run) 하나 500m/1Gi · 한도 4/6Gi, 롤링 때 dashboard 두 번째 파드.
+# 저장: startup-data 2Gi(옛 동기화 사본, 비워 두고 정리 예정) + lab 40Gi.
 apiVersion: v1
 kind: ResourceQuota
 metadata:
   name: quota
 spec:
   hard:
-    requests.cpu: "200m"
-    requests.memory: 512Mi
-    limits.cpu: "1"
-    limits.memory: 1Gi
-    requests.storage: 2Gi
-    persistentvolumeclaims: "1"
+    requests.cpu: "1"
+    requests.memory: 2Gi
+    limits.cpu: "6"
+    limits.memory: 8Gi
+    requests.storage: 42Gi
+    persistentvolumeclaims: "2"

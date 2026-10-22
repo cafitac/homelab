@@ -1,0 +1,12 @@
+# startup-data: 창업 연구실(product-growth-lab)의 대시보드가 읽는 파일의 사본.
+# 원본은 Mac Studio 외장 SSD(/Volumes/TradingData/agent-research/product-growth-lab)이고, 이 클러스터 원칙(--mount none)에 따라
+# 호스트 폴더를 마운트하지 않는다. 연구실 저장소의 lab-v2/dashboard/sync.py 가 Mac Studio 에서 kubectl exec 로 밀어 넣는다(10분마다).
+# 사본이라 잃어도 다시 밀어 넣으면 된다 — 그래도 Retain(지우는 건 사람이 한다).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: startup-data
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path-retain
+  resources: { requests: { storage: 2Gi } }

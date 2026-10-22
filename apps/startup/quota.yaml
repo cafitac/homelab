@@ -1,0 +1,13 @@
+# 상시 requests 는 dashboard 30m/96Mi 하나. 롤링 업데이트 때 두 번째 파드 몫까지.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+spec:
+  hard:
+    requests.cpu: "200m"
+    requests.memory: 512Mi
+    limits.cpu: "1"
+    limits.memory: 1Gi
+    requests.storage: 2Gi
+    persistentvolumeclaims: "1"

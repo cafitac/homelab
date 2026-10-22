@@ -1,0 +1,58 @@
+# 조사 Job 의 틀 — suspend: true 라 스스로 돌지 않는다. 연구실 저장소 deploy/job.sh 가 이 틀로 Job 을 만든다
+# (산업 지도 확장 루프 · 분야 조사 · 창업 렌즈). 한 번에 하나만(같은 분야를 두 곳에서 조사하지 않게, job.sh 가 확인).
+# 파드: 엔트리포인트가 이미지 코드(/app)를 /lab(PVC)에 덮어쓰고 그 안에서 돈다. Claude 인증은 Secret startup-claude(optional —
+# 없으면 모델 호출만 실패한다). 만들기: 연구실 저장소 deploy/secrets.sh(Mac Studio, 사람이 손으로).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lab-run
+spec:
+  suspend: true
+  schedule: "0 0 1 1 *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels: { app: lab-run }
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: lab
+              image: startup-lab
+              imagePullPolicy: IfNotPresent
+              args: ["check"]
+              env:
+                - { name: DISABLE_AUTOUPDATER, value: "1" }
+                - { name: TMPDIR, value: /tmp }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: lab, mountPath: /lab }
+                - { name: tmp, mountPath: /tmp }
+                - { name: claude, mountPath: /secrets/claude, readOnly: true }
+              resources:
+                requests: { cpu: 500m, memory: 1Gi }
+                limits: { cpu: "4", memory: 6Gi }
+          volumes:
+            - name: lab
+              persistentVolumeClaim: { claimName: lab }
+            - name: tmp
+              emptyDir: { sizeLimit: 4Gi }
+            - name: claude
+              secret: { secretName: startup-claude, optional: true }

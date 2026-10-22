@@ -3,7 +3,7 @@
 #   없거나 틀리면 401, ACCESS_AUD · ACCESS_TEAM_DOMAIN 이 비어 있거나 키를 못 받으면 503 으로 닫힌다. /healthz 만 열려 있다.
 # ⚠️ ACCESS_AUD 는 Cloudflare Zero Trust 에서 startup.cafitac.com Access 앱을 만든 뒤 그 Application Audience(AUD) 값을 넣는다(비밀 아님).
 # 이미지: 연구실 저장소 lab-v2/dashboard/build.sh(Mac Studio) — 출력 태그를 kustomization.yaml newTag 에 넣는다.
-# 볼륨은 쓰기 가능으로 마운트한다 — sync.py 가 같은 파드에 kubectl exec 로 tar 를 풀어 넣기 때문. 앱은 /data 에 쓰지 않는다.
+# 볼륨(lab)은 조사 Job 이 쓰고 대시보드는 읽기만 한다. 처음 데이터 이전(migrate-data.sh)이 이 파드에 tar 를 풀어 넣으므로 쓰기 가능으로 마운트한다.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,6 +34,8 @@ spec:
           env:
             - { name: ACCESS_AUD, value: be83850070f87f8139d1d7af1d9a5e23fcdac5d75f440d14a1dd33df9471a9a7 }
             - { name: ACCESS_TEAM_DOMAIN, value: cafitac.cloudflareaccess.com }
+            # 조사 Job 과 같은 PVC(lab)를 직접 읽는다 — 동기화 없음
+            - { name: LAB_ROOT, value: /lab }
           ports: [{ containerPort: 8080 }]
           startupProbe:
             httpGet: { path: /healthz, port: 8080 }
@@ -52,14 +54,14 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
           volumeMounts:
-            - { name: data, mountPath: /data }
+            - { name: lab, mountPath: /lab }
             - { name: tmp, mountPath: /tmp }
           resources:
             requests: { cpu: 30m, memory: 96Mi }
             limits: { cpu: 300m, memory: 256Mi }
       volumes:
-        - name: data
-          persistentVolumeClaim: { claimName: startup-data }
+        - name: lab
+          persistentVolumeClaim: { claimName: lab }
         - name: tmp
           emptyDir: { sizeLimit: 64Mi }
 ---

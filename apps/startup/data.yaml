@@ -10,3 +10,15 @@ spec:
   accessModes: [ReadWriteOnce]
   storageClassName: local-path-retain
   resources: { requests: { storage: 2Gi } }
+---
+# lab: 창업 연구실 작업 사본(코드는 Job 이 이미지에서 덮어쓰고, 산출물 — 산업 지도 조사서 · 실행 기록 · 후보 · 코퍼스 — 이 여기 쌓인다).
+# 조사 Job(lab-run)이 쓰고 대시보드가 읽는다. 단일 노드라 RWO 를 두 파드가 같이 마운트한다. Retain.
+# 처음 한 번 Mac Studio 외장 SSD 의 기존 산출물을 연구실 저장소 deploy/migrate-data.sh 로 옮긴다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lab
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path-retain
+  resources: { requests: { storage: 40Gi } }

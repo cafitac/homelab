@@ -32,7 +32,7 @@ spec:
           image: startup-dashboard
           imagePullPolicy: IfNotPresent
           env:
-            - { name: ACCESS_AUD, value: "" }
+            - { name: ACCESS_AUD, value: be83850070f87f8139d1d7af1d9a5e23fcdac5d75f440d14a1dd33df9471a9a7 }
             - { name: ACCESS_TEAM_DOMAIN, value: cafitac.cloudflareaccess.com }
           ports: [{ containerPort: 8080 }]
           startupProbe:

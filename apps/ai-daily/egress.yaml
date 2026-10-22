@@ -1,0 +1,23 @@
+# 실행 파드의 나가는 길을 인터넷으로만 좁힌다 — 심화 단계의 Claude 가 웹에서 아무 URL 이나 읽는다(WebFetch).
+# 막지 않으면 192.168.5.2(맥 호스트) · 클러스터 서비스 · k8s API 에 닿는다(judge-board runner-egress 와 같은 이유, 같은 대역).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: daily-job-egress
+spec:
+  podSelector:
+    matchLabels: { app: daily-job }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]

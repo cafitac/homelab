@@ -1,0 +1,12 @@
+# 결과 · 웹 페이지 · 보낸 기록 · 원본 캐시(/data/out · site · state · .cache). 외장 SSD 의 VM 디스크에 생긴다.
+# CronJob 이 쓰고 web 이 site/ 만 읽기 전용으로 마운트한다 — 노드가 하나라 RWO 로도 두 파드가 같이 쓴다(local-path, 단일 노드 colima-k8s).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+spec:
+  storageClassName: local-path-retain
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi

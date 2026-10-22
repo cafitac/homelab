@@ -13,4 +13,4 @@ components:
   - ../../platform/components/isolation
 images:
   - name: startup-dashboard
-    newTag: 31260df4d0c0
+    newTag: 48661cf30164

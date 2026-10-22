@@ -1,0 +1,54 @@
+# 매일 07:00 KST 에 그날 결과를 만든다(cafitac/ai-daily). LLM 은 Claude Code CLI(구독, CLAUDE_CODE_OAUTH_TOKEN)를 부른다.
+# ⭐ backoffLimit 0 — 다시 돌리면 Claude 사용량을 두 번 쓴다. 실패는 그대로 보이게 두고 사람이 다시 돌린다:
+#    kubectl -n ai-daily create job daily-manual-$(date +%s) --from=cronjob/daily
+# Mac Studio 가 07:00 에 꺼져 있었으면 1 시간 안에 켜질 때만 늦게라도 돈다(startingDeadlineSeconds).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: daily
+spec:
+  schedule: "0 7 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels: { app: daily-job }
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: daily
+              image: ai-daily
+              imagePullPolicy: IfNotPresent
+              args: ["run", "--root", "/app", "--data", "/data"]
+              envFrom:
+                - secretRef: { name: ai-daily-env }
+              env:
+                - { name: TZ, value: Asia/Seoul }
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: { drop: [ALL] }
+              resources:
+                requests: { cpu: 200m, memory: 512Mi }
+                limits: { cpu: 1500m, memory: 2Gi }
+              volumeMounts:
+                - { name: data, mountPath: /data }
+                - { name: tmp, mountPath: /tmp }
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: data }
+            - name: tmp
+              emptyDir: { sizeLimit: 1Gi }

@@ -1,0 +1,60 @@
+# daily.cafitac.com — PVC 의 site/ 를 읽기 전용으로 보여 주는 nginx.
+# ⭐ Cloudflare Access 앱 ai-daily(정책 owner)가 이 호스트를 먼저 막고 있다(2026-10-22 생성, 비로그인 302 확인).
+#    *.cafitac.com 와일드카드가 이미 Traefik 으로 오므로 Access 없이 이 Ingress 를 만들면 그 순간 공개된다.
+# 첫 실행 전에는 site/ 가 비어 / 가 404 라 상태 확인은 HTTP 가 아니라 포트로 본다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: web
+          image: ai-daily-web
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 80 }]
+          securityContext:
+            allowPrivilegeEscalation: false
+          readinessProbe:
+            tcpSocket: { port: 80 }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: 80 }
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 200m, memory: 64Mi }
+          volumeMounts:
+            - { name: data, mountPath: /usr/share/nginx/html, subPath: site, readOnly: true }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: data, readOnly: true }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector: { app: web }
+  ports: [{ port: 80, targetPort: 80 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+spec:
+  rules:
+    - host: daily.cafitac.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: web, port: { number: 80 } }

@@ -1,0 +1,19 @@
+# daily.cafitac.com — cafitac/ai-daily 매일 07:00 KST 실행 + 결과 웹 페이지
+# 이미지 갱신: ai-daily 저장소 main 에서 deploy/release.sh(빌드 → 아래 두 newTag 커밋 → 반영 확인)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ai-daily
+resources:
+  - namespace.yaml
+  - quota.yaml
+  - data.yaml
+  - cronjob.yaml
+  - web.yaml
+  - egress.yaml
+components:
+  - ../../platform/components/isolation
+images:
+  - name: ai-daily
+    newTag: e09a17989872
+  - name: ai-daily-web
+    newTag: e09a17989872

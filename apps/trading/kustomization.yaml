@@ -20,6 +20,6 @@ configMapGenerator:
       - backup.py=scripts/backup.py
 images:
   - name: trading-lab
-    newTag: 71a873c14c05        # image ID sha256:4a2dacac2b04286173bfd69cc6891e9a630339718a4bac0723c20811a2e98759
+    newTag: 55b36b93fb17        # image ID sha256:e6adbdc9a6110d638a84e2208e4ca3491b107e66432b482310fc31830066319b
   - name: trading-batch
-    newTag: 71a873c14c05        # image ID sha256:3da158125db9cf8be4c9607a8ca58c38d0be9dc93485c73d96c799f67e7864ad
+    newTag: 55b36b93fb17        # image ID sha256:bffdc9fb2910a8db5b7e480176172c41c116b31405b11ae41e9233f71a4f1a95

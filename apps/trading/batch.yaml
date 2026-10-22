@@ -43,10 +43,12 @@ spec:
               volumeMounts:
                 - { name: data, mountPath: /home/app/.tradelab }
                 - { name: env, mountPath: /home/app/.tradelab/env }
+                - { name: stockdata, mountPath: /home/app/.tradelab/stock }
                 - { name: tmp, mountPath: /tmp }
                 - { name: claude, mountPath: /secrets/claude, readOnly: true }
                 - { name: kis, mountPath: /secrets/kis, readOnly: true }
                 - { name: toss, mountPath: /secrets/toss, readOnly: true }
+                - { name: stockdata-secret, mountPath: /secrets/stockdata, readOnly: true }
               resources:
                 # parallel --max 6: 여러 tradelab 프로세스 + 결정마다 claude CLI. 실측(AD18) 뒤 D5 에서 조정
                 requests: { cpu: 500m, memory: 3Gi }
@@ -54,6 +56,9 @@ spec:
           volumes:
             - name: data
               persistentVolumeClaim: { claimName: trading-data }
+            # 개별 주식 연구 데이터(S5D) — stock 명령만 쓴다
+            - name: stockdata
+              persistentVolumeClaim: { claimName: trading-stockdata }
             - name: env
               emptyDir: { medium: Memory, sizeLimit: 1Mi }
             - name: tmp
@@ -67,3 +72,6 @@ spec:
             # 토스증권 조회 전용 키(toss 명령만 사용) — S3T. 주문 경로는 없다
             - name: toss
               secret: { secretName: tradelab-toss, optional: true }
+            # 개별 주식 무료 데이터 소스 키 · SEC 연락처 · 가명 키(stock 명령만 사용) — S5D
+            - name: stockdata-secret
+              secret: { secretName: tradelab-stockdata, optional: true }

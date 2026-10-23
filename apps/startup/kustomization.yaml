@@ -10,6 +10,7 @@ resources:
   - data.yaml
   - dashboard.yaml
   - lab-run.yaml
+  - lab-expand-daily.yaml
 components:
   - ../../platform/components/isolation
 images:

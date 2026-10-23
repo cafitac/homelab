@@ -95,7 +95,7 @@ homelab/
   docs/           결정 기록 · 이전 기록 · 장애 기록
 ```
 
-- 이미지: 각 프로젝트 저장소에서 `docker build` (Mac Studio, 클러스터와 같은 docker 런타임) → 태그 = git 커밋. 레지스트리는 두지 않는다(필요해지면 클러스터 안 registry).
+- 이미지: 각 프로젝트 저장소에서 `docker build` (Mac Studio, 클러스터와 같은 docker 런타임) → 태그 = git 커밋. 레지스트리는 두지 않는다(필요해지면 클러스터 안 registry). Docker Hub 기반 이미지는 노드 캐시(`platform/registry-mirror`, pull-through, 2026-10-23)를 거쳐 받는다.
 - 비밀값: git 에 넣지 않는다. Mac Studio 의 파일에서 `kubectl create secret` 으로 만든다(SOPS · sealed-secrets 는 다른 사람이 쓰게 되면).
 - 적용: ⭐ **최종은 Argo CD GitOps** (사용자 결정 2026-10-05). 0 ~ 1 단계는 `kubectl apply -k` 로 시작하고, 플랫폼이 안정되면 Argo CD 를 클러스터에 올려 `homelab` 저장소를 원본으로 삼는다(App of Apps). 이후 프로젝트는 처음부터 Argo CD Application 으로 옮긴다.
 - 백업: DB 마다 `pg_dump` CronJob → 백업 PVC(SSD). 지금 compose 의 backup 컨테이너(매일 04:00 · 7 일 보존)를 그대로 옮긴다.

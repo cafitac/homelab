@@ -1,0 +1,54 @@
+# Docker Hub pull-through 캐시 — 노드 dockerd(registry-mirrors = http://127.0.0.1:5055, cluster/up.sh)가 Hub 이미지를 여기서 먼저 받는다.
+# Hub 가 느리거나 죽어도 한 번 받은 이미지(태그 · 다이제스트)는 캐시가 내준다. 캐시가 죽으면 dockerd 는 Hub 로 직접 간다(2026-10-23 확인).
+# 2026-10-23 interview-coach 배포 두 번이 Hub 메타데이터 조회 timeout 으로 실패해서 둔다. 모든 프로젝트의 이미지 빌드 · k3s 의 Hub 이미지가 같이 쓴다.
+# ⭐ hostPort 를 127.0.0.1 에만 묶는다 — preview-hub registry 와 같은 예외(iptables 로만 처리되어 VM 에 소켓이 없고 lima 가 Mac 으로 넘기지 않는다).
+# 만료 없음(TTL 0) — 오래 안 쓴 기반 이미지도 Hub 장애 때 내줄 수 있게. 커지면 PVC 를 지우고 다시 채운다(데이터는 언제든 버려도 된다).
+# Hub 만 캐시된다(dockerd mirror 는 Hub 전용) — ghcr 등은 각 프로젝트가 다이제스트 고정 · 노드에 미리 받기로 버틴다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-mirror
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 50Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry-mirror
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: registry-mirror }
+  template:
+    metadata:
+      labels: { app: registry-mirror }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: registry
+          # 이 이미지 자체도 Hub 에서 온다 — 다이제스트로 고정해 노드에 있으면 다시 받지 않는다
+          image: registry:3@sha256:01cd312e67026f06f5d89c3e133a4a9adc7cb9eeb9b1194e0b2954dfd770efd2
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: REGISTRY_PROXY_REMOTEURL, value: "https://registry-1.docker.io" }
+            - { name: REGISTRY_PROXY_TTL, value: "0" }
+            - { name: REGISTRY_STORAGE_DELETE_ENABLED, value: "true" }
+            - { name: OTEL_TRACES_EXPORTER, value: none }
+          ports:
+            - { containerPort: 5000, hostPort: 5055, hostIP: 127.0.0.1 }
+          readinessProbe:
+            httpGet: { path: /v2/, port: 5000 }
+          livenessProbe:
+            httpGet: { path: /v2/, port: 5000 }
+            periodSeconds: 30
+            failureThreshold: 4
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/registry }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: "1", memory: 512Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: registry-mirror }

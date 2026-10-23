@@ -67,6 +67,28 @@ open(p, "w").write(s)
 PY
   echo "colima: 컨테이너 로그 회전(100m × 3) 설정"
 fi
+# ⭐ Docker Hub 캐시(platform/registry-mirror, 노드 127.0.0.1:5055) — dockerd 가 Hub 이미지를 캐시에서 먼저 받는다.
+#    2026-10-23 interview-coach 배포 두 번이 Hub 메타데이터 timeout 으로 실패해서 둔다. 캐시가 죽으면 dockerd 는 Hub 로 직접 간다.
+#    colima.yaml 에 적어 다음 기동에도 남기고, 켜져 있는 VM 은 아래(기동 뒤)에서 daemon.json + SIGHUP 으로 바로 바꾼다(재시작 없음).
+#    되돌리기: colima.yaml 의 registry-mirrors 두 줄을 지우고, VM daemon.json 의 "registry-mirrors" 를 [] 로 바꾼 뒤 SIGHUP
+#    (키를 지우면 SIGHUP 이 이전 값을 그대로 둔다 — 2026-10-23 docker 29.5.2 확인)
+MIRROR=http://127.0.0.1:5055
+if [ -f "$COLIMA_YAML" ] && ! grep -qE "^    - $MIRROR\$" "$COLIMA_YAML"; then
+  python3 - "$COLIMA_YAML" "$MIRROR" <<'PY'
+import sys
+p, url = sys.argv[1], sys.argv[2]
+s = open(p).read()
+block = "  registry-mirrors:\n    - " + url + "\n"
+if "\ndocker: {}\n" in s:
+    s = s.replace("\ndocker: {}\n", "\ndocker:\n" + block, 1)
+elif "\ndocker:\n" in s:
+    s = s.replace("\ndocker:\n", "\ndocker:\n" + block, 1)
+else:
+    sys.exit("colima.yaml 에 docker: 절이 없다 — 손으로 registry-mirrors 를 넣는다")
+open(p, "w").write(s)
+PY
+  echo "colima: Docker Hub 캐시($MIRROR) 설정"
+fi
 if colima status -p "$PROFILE" >/dev/null 2>&1 && { ! grep -qE '^cpu: 16$' "$COLIMA_YAML" \
     || ! grep -qE '^disk: 1000$' "$COLIMA_YAML" \
     || ! colima ssh -p "$PROFILE" -- sudo grep -q '"max-size"' /etc/docker/daemon.json; }; then
@@ -78,6 +100,20 @@ fi
 if [ ! -L "$SRC" ]; then
   relocate
   start
+fi
+
+# 켜져 있는 VM 의 dockerd 에도 캐시를 건다 — registry-mirrors 는 SIGHUP 으로 다시 읽는 설정이라 컨테이너 · k3s 가 재시작되지 않는다
+if ! colima ssh -p "$PROFILE" -- sudo grep -q "$MIRROR" /etc/docker/daemon.json; then
+  colima ssh -p "$PROFILE" -- sudo python3 - "$MIRROR" <<'PY'
+import json, sys
+p = "/etc/docker/daemon.json"
+d = json.load(open(p))
+d["registry-mirrors"] = [sys.argv[1]] + [x for x in d.get("registry-mirrors", []) if x != sys.argv[1]]
+json.dump(d, open(p, "w"), indent=2)
+PY
+  # shellcheck disable=SC2016  # VM 안 셸이 펼친다
+  colima ssh -p "$PROFILE" -- sh -c 'sudo kill -HUP "$(pidof dockerd)"'
+  echo "dockerd: Docker Hub 캐시($MIRROR) 적용(SIGHUP)"
 fi
 
 # ⭐ kubelet static CPU manager — Guaranteed 파드의 정수 코어를 독점시킨다(측정 · 채점이 이웃 부하에 흔들리지 않게).

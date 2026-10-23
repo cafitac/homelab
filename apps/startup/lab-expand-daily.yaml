@@ -1,0 +1,60 @@
+# 산업 지도 매일 자동 확장 — 매일 02:00(KST) 운영 구독 토큰(Secret startup-claude)으로 확장 루프를 돌린다.
+# 상한은 연구실 저장소 lab-v2/industry/budget.json 의 ops 계정(하루 $15 · 5시간 $20 · 주 $100, 주는 목요일 08:00 시작)이
+# 정한다. 루프가 meta.json 장부로 남은 금액을 계산해 다 쓰면 스스로 끝난다(주 예산을 넘긴 날은 바로 끝남).
+# 순서: KSIC 77개 기준선 → 우선순위 상 하위 분야 → … (expand.py frontier). 20시간 넘으면 끊는다.
+# 틀(lab-run)과 같은 파드 설정. 이미지 태그는 kustomization 의 startup-lab newTag 를 같이 따른다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lab-expand-daily
+spec:
+  schedule: "0 2 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 72000
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels: { app: lab-run, run: expand-daily }
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: lab
+              image: startup-lab
+              imagePullPolicy: IfNotPresent
+              args: ["expand", "--budget", "9999", "--account", "ops", "--cap-5h", "20"]
+              env:
+                - { name: DISABLE_AUTOUPDATER, value: "1" }
+                - { name: TMPDIR, value: /tmp }
+                - { name: LAB_ACCOUNT, value: ops }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: lab, mountPath: /lab }
+                - { name: tmp, mountPath: /tmp }
+                - { name: claude, mountPath: /secrets/claude, readOnly: true }
+              resources:
+                requests: { cpu: 500m, memory: 1Gi }
+                limits: { cpu: "4", memory: 6Gi }
+          volumes:
+            - name: lab
+              persistentVolumeClaim: { claimName: lab }
+            - name: tmp
+              emptyDir: { sizeLimit: 4Gi }
+            - name: claude
+              secret: { secretName: startup-claude, optional: true }

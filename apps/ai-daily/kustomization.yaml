@@ -14,6 +14,6 @@ components:
   - ../../platform/components/isolation
 images:
   - name: ai-daily
-    newTag: c6025f366d12
+    newTag: d66e7232cebc
   - name: ai-daily-web
-    newTag: c6025f366d12
+    newTag: d66e7232cebc

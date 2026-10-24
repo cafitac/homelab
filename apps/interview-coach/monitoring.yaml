@@ -1,0 +1,74 @@
+# 앱 지표 수집 · 경보 규칙. 지표 목록 · 뜻은 interview-coach 저장소 docs/MONITORING.md
+# ⭐ 경보는 Alertmanager 화면 · API 에만 남는다 — 수신처를 연결하지 않는다(사용자 결정 2026-10-05 · 2026-10-24 「경보는 일단 안 해도」).
+#    나중에 에이전트가 이 경보를 읽어 처리한다(interview-coach .dev/features/20261024-monitoring S6)
+# 대시보드는 monitoring/dashboards/interview-coach.json (Grafana 사이드카가 monitoring namespace 만 본다)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: app
+spec:
+  # job 라벨 = Service 이름(server · knowledge)
+  selector:
+    matchExpressions:
+      - { key: app, operator: In, values: [server, knowledge] }
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app
+spec:
+  groups:
+    - name: interview-coach.app
+      rules:
+        - alert: InterviewCoachTargetDown
+          expr: up{namespace="interview-coach", job=~"server|knowledge"} == 0
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "interview-coach {{ $labels.job }} 지표를 5분째 못 읽는다"
+            description: "파드가 죽었거나 /actuator/prometheus 가 응답하지 않는다. kubectl -n interview-coach get pods · logs"
+        # ⚠️ Micrometer 는 결과 라벨 조합이 처음 생길 때 시계열을 만든다 — increase() 는 처음 생긴 시계열의 첫 값을 세지 않으므로
+        #    「30분 전에는 없던 시계열」도 함께 본다(서버가 뜬 뒤 첫 실패)
+        - alert: InterviewCoachJobFailed
+          expr: |
+            sum by (kind) (increase(coach_pipeline_jobs_seconds_count{namespace="interview-coach", outcome=~"failed|error"}[30m])) > 0
+            or
+            sum by (kind) (coach_pipeline_jobs_seconds_count{namespace="interview-coach", outcome=~"failed|error"}
+              unless coach_pipeline_jobs_seconds_count{namespace="interview-coach", outcome=~"failed|error"} offset 30m)
+          labels: { severity: warning }
+          annotations:
+            summary: "파이프라인 {{ $labels.kind }} 작업이 끝내 실패했다(최근 30분)"
+            description: "사용자 화면에 실패가 떴다. 원인: app.jobs 의 error · step, server 로그 「잡 단계 실패」"
+        - alert: InterviewCoachLlmUsageLimit
+          expr: |
+            sum (increase(coach_llm_calls_seconds_count{namespace="interview-coach", outcome="usage_limit"}[15m])) > 0
+            or
+            sum (coach_llm_calls_seconds_count{namespace="interview-coach", outcome="usage_limit"}
+              unless coach_llm_calls_seconds_count{namespace="interview-coach", outcome="usage_limit"} offset 15m)
+          labels: { severity: critical }
+          annotations:
+            summary: "LLM 사용량 한도 — 모든 계정이 막혔다"
+            description: "면접 · 준비가 멈춘다. 한도가 풀릴 때까지 기다리거나 두 번째 계정(CLAUDE_CODE_OAUTH_TOKEN_FALLBACK)을 확인한다"
+        # 사용자가 한 명이라 호출이 적다 — 최소 5건일 때만 비율을 본다
+        - alert: InterviewCoachLlmErrorRate
+          expr: |
+            sum by (skill) (increase(coach_llm_calls_seconds_count{namespace="interview-coach", outcome!="ok"}[1h]))
+              / sum by (skill) (increase(coach_llm_calls_seconds_count{namespace="interview-coach"}[1h])) > 0.3
+            and sum by (skill) (increase(coach_llm_calls_seconds_count{namespace="interview-coach"}[1h])) >= 5
+          labels: { severity: warning }
+          annotations:
+            summary: "LLM 스킬 {{ $labels.skill }} 호출의 {{ $value | humanizePercentage }} 가 실패(최근 1시간)"
+            description: "outcome 별로 나눠 본다(Grafana interview-coach 대시보드). 원인: app.llm_calls 의 error"
+        - alert: InterviewCoachDeepDiveTurnFailed
+          expr: |
+            sum by (reason) (increase(coach_deepdive_turns_total{namespace="interview-coach", outcome="failed"}[30m])) > 0
+            or
+            sum by (reason) (coach_deepdive_turns_total{namespace="interview-coach", outcome="failed"}
+              unless coach_deepdive_turns_total{namespace="interview-coach", outcome="failed"} offset 30m)
+          labels: { severity: warning }
+          annotations:
+            summary: "깊이 파기 턴이 실패했다({{ $labels.reason }}, 최근 30분)"

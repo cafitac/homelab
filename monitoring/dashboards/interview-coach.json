@@ -1,0 +1,546 @@
+{
+  "uid": "interview-coach-app",
+  "title": "interview-coach · 앱",
+  "tags": [
+    "interview-coach"
+  ],
+  "timezone": "Asia/Seoul",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "데이터 소스",
+        "current": {
+          "text": "Prometheus",
+          "value": "prometheus"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "LLM 호출",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "호출 수 (결과별, 5분)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (increase(coach_llm_calls_seconds_count{namespace=\"interview-coach\"}[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "실패 호출 (스킬 · 결과별, 1시간)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (skill, outcome) (increase(coach_llm_calls_seconds_count{namespace=\"interview-coach\", outcome!=\"ok\"}[1h])) > 0",
+          "legendFormat": "{{skill}} · {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "지연 p95 (스킬별, 버킷 어림)",
+      "description": "버킷 2·5·15·30·60·120·300초로 어림한 값",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (skill, le) (rate(coach_llm_calls_seconds_bucket{namespace=\"interview-coach\"}[30m])))",
+          "legendFormat": "{{skill}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "평균 지연 (스킬별)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (skill) (rate(coach_llm_calls_seconds_sum{namespace=\"interview-coach\"}[30m])) / sum by (skill) (rate(coach_llm_calls_seconds_count{namespace=\"interview-coach\"}[30m]))",
+          "legendFormat": "{{skill}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "파이프라인 작업",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "작업 결과 (종류 · 결과별, 5분)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (kind, outcome) (increase(coach_pipeline_jobs_seconds_count{namespace=\"interview-coach\"}[5m])) > 0",
+          "legendFormat": "{{kind}} · {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "작업 소요 p95 (종류별)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (kind, le) (rate(coach_pipeline_jobs_seconds_bucket{namespace=\"interview-coach\"}[30m])))",
+          "legendFormat": "{{kind}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "실행 중 작업",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(coach_pipeline_inflight{namespace=\"interview-coach\"})",
+          "legendFormat": "실행 중"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "끝내 실패한 작업 (24시간)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 26,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(coach_pipeline_jobs_seconds_count{namespace=\"interview-coach\", outcome=~\"failed|error\"}[24h]))",
+          "legendFormat": "실패"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "깊이 파기 턴 (결과 · 이유별, 1시간)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome, reason) (increase(coach_deepdive_turns_total{namespace=\"interview-coach\"}[1h])) > 0",
+          "legendFormat": "{{outcome}} · {{reason}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "서버",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "HTTP 요청 (상태별, 5분)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (increase(http_server_requests_seconds_count{namespace=\"interview-coach\", job=\"server\"}[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "HTTP 5xx (경로별, 1시간)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 35,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (method, uri) (increase(http_server_requests_seconds_count{namespace=\"interview-coach\", job=\"server\", status=~\"5..\"}[1h])) > 0",
+          "legendFormat": "{{method}} {{uri}}"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "JVM 힙 사용",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job) (jvm_memory_used_bytes{namespace=\"interview-coach\", area=\"heap\"})",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "DB 연결 (사용 중 · 대기)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job) (hikaricp_connections_active{namespace=\"interview-coach\"})",
+          "legendFormat": "{{job}} 사용 중"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (job) (hikaricp_connections_pending{namespace=\"interview-coach\"})",
+          "legendFormat": "{{job}} 대기"
+        }
+      ]
+    }
+  ]
+}

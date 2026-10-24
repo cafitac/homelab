@@ -94,3 +94,21 @@ spec:
           annotations:
             summary: "브라우저 오류 보고가 분당 상한을 넘어 버려지고 있다"
             description: "같은 오류가 반복되는지 Loki 에서 보고, 아니면 /api/client-errors 를 누가 부르는지 server ApiAccess 로그를 본다"
+        # 음성 턴(interview-coach POST /api/telemetry/voice) — 2자 이하로 끝나 보낸 턴은 말이 끊겨 일찍 보낸 것(2026-10 「나」 사건)
+        - alert: InterviewCoachVoiceShortTurns
+          expr: |
+            sum by (surface) (increase(coach_voice_turns_total{namespace="interview-coach", length="short"}[1h]))
+              / sum by (surface) (increase(coach_voice_turns_total{namespace="interview-coach"}[1h])) > 0.2
+            and sum by (surface) (increase(coach_voice_turns_total{namespace="interview-coach"}[1h])) >= 5
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $labels.surface }} 음성 턴의 {{ $value | humanizePercentage }} 가 2자 이하로 끝났다(최근 1시간)"
+            description: "Loki: {namespace=\"interview-coach\", app=\"server\"} |= \"음성 턴\" |= \"length=short\" — 침묵 판정(apps/web/src/lib/endOfTurn.ts)을 의심한다"
+        # no-speech 는 조용히 있었을 뿐이라 뺀다
+        - alert: InterviewCoachVoiceRecognitionErrors
+          expr: |
+            sum by (surface, code) (increase(coach_voice_recognition_errors_total{namespace="interview-coach", code!="no-speech"}[30m])) >= 3
+          labels: { severity: warning }
+          annotations:
+            summary: '{{ $labels.surface }} 음성 인식 오류 {{ $labels.code }} {{ $value | printf "%.0f" }}번(최근 30분)'
+

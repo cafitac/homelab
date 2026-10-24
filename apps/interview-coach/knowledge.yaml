@@ -50,6 +50,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: knowledge
+  # ServiceMonitor app(monitoring.yaml)이 Service 라벨로 고른다 — 없으면 Prometheus 가 이 Service 를 못 찾는다
+  labels: { app: knowledge }
 spec:
   selector: { app: knowledge }
   # 이름 http — ServiceMonitor(monitoring.yaml)가 이 이름으로 /actuator/prometheus 를 긁는다

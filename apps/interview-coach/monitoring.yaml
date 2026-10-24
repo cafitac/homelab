@@ -76,3 +76,21 @@ spec:
           labels: { severity: warning }
           annotations:
             summary: "깊이 파기 턴이 실패했다({{ $labels.reason }}, 최근 30분)"
+        # 브라우저 오류(interview-coach POST /api/client-errors) — 내용은 Loki: {namespace="interview-coach", app="server"} |= "브라우저 오류"
+        - alert: InterviewCoachClientError
+          expr: |
+            sum by (kind) (increase(coach_client_errors_total{namespace="interview-coach", outcome="logged"}[30m])) > 0
+            or
+            sum by (kind) (coach_client_errors_total{namespace="interview-coach", outcome="logged"}
+              unless coach_client_errors_total{namespace="interview-coach", outcome="logged"} offset 30m)
+          labels: { severity: warning }
+          annotations:
+            summary: "화면에서 {{ $labels.kind }} 오류가 났다(최근 30분)"
+            description: "Grafana Explore(Loki): {namespace=\"interview-coach\", app=\"server\"} |= \"브라우저 오류\""
+        # 분당 상한(60)을 넘겨 버린 보고 — 오류 폭주이거나 누가 공개 주소로 마구 보내는 중
+        - alert: InterviewCoachClientErrorFlood
+          expr: sum (increase(coach_client_errors_total{namespace="interview-coach", outcome="dropped"}[10m])) > 0
+          labels: { severity: warning }
+          annotations:
+            summary: "브라우저 오류 보고가 분당 상한을 넘어 버려지고 있다"
+            description: "같은 오류가 반복되는지 Loki 에서 보고, 아니면 /api/client-errors 를 누가 부르는지 server ApiAccess 로그를 본다"

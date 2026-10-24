@@ -541,6 +541,83 @@
           "legendFormat": "{{job}} 대기"
         }
       ]
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "브라우저 오류",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "브라우저 오류 (종류 · 결과별, 5분)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 52,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (kind, outcome) (increase(coach_client_errors_total{namespace=\"interview-coach\"}[5m])) > 0",
+          "legendFormat": "{{kind}} · {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "logs",
+      "title": "최근 브라우저 오류 (Loki)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 52,
+        "w": 16,
+        "h": 8
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{namespace=\"interview-coach\", app=\"server\"} |= \"브라우저 오류\""
+        }
+      ]
     }
   ]
 }

@@ -137,6 +137,15 @@ if [ "$current" != "$K3S_CONFIG" ]; then
   echo "k3s: kubelet 설정 적용"
 fi
 
+# ⭐ inotify 인스턴스 한도 — 기본 128 이 차서 kubelet 이 로그를 따라 읽지 못했다(kubectl logs -f · Alloy 가
+#    "failed to create fsnotify watcher: too many open files", 2026-10-24). 노드 전체(모든 프로젝트) 몫이다. 재시작 없이 바로 적용된다
+INOTIFY_CONF='fs.inotify.max_user_instances = 8192'
+if [ "$(colima ssh -p "$PROFILE" -- cat /etc/sysctl.d/90-inotify.conf 2>/dev/null || true)" != "$INOTIFY_CONF" ]; then
+  printf '%s\n' "$INOTIFY_CONF" | colima ssh -p "$PROFILE" -- sudo tee /etc/sysctl.d/90-inotify.conf >/dev/null
+  colima ssh -p "$PROFILE" -- sudo sysctl -p /etc/sysctl.d/90-inotify.conf >/dev/null
+  echo "VM: inotify 인스턴스 한도 8192"
+fi
+
 # kubeconfig — 전역 ~/.kube/config 를 건드리지 않고 따로 둔다. KUBECONFIG=~/.kube/homelab.yaml 로 쓴다
 mkdir -p "$HOME/.kube"
 colima ssh -p "$PROFILE" -- sudo cat /etc/rancher/k3s/k3s.yaml \

@@ -1,0 +1,39 @@
+# grafana/loki 7.5.0 — 단일 프로세스(SingleBinary) · 파일 저장 · 7일. 로그가 재배포 뒤에도 남게(interview-coach .dev/features/20261024-monitoring S3)
+# ⚠️ 이 로그에는 면접 답 · 자료 일부가 섞일 수 있다(서버 경고 · 오류 메시지) — 밖으로 내보내지 않는다(Ingress 없음, Grafana 로만 본다)
+deploymentMode: SingleBinary
+loki:
+  auth_enabled: false
+  commonConfig: { replication_factor: 1 }
+  storage: { type: filesystem }
+  schemaConfig:
+    configs:
+      - from: "2026-10-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index: { prefix: index_, period: 24h }
+  limits_config:
+    retention_period: 168h
+    ingestion_rate_mb: 4
+    ingestion_burst_size_mb: 8
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+  pattern_ingester: { enabled: false }
+  ui: { enabled: false }
+singleBinary:
+  replicas: 1
+  persistence: { enabled: true, size: 10Gi, storageClass: local-path }
+  resources:
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+backend: { replicas: 0 }
+read: { replicas: 0 }
+write: { replicas: 0 }
+chunksCache: { enabled: false }
+resultsCache: { enabled: false }
+gateway: { enabled: false }
+lokiCanary: { enabled: false }
+test: { enabled: false }
+memberlist: { service: { publishNotReadyAddresses: true } }
+sidecar: { rules: { enabled: false } }

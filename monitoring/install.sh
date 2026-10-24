@@ -10,6 +10,8 @@ cd "$(dirname "$0")"
 
 KPS_VERSION=91.9.0
 BLACKBOX_VERSION=11.19.1
+LOKI_VERSION=7.5.0
+ALLOY_VERSION=1.14.3
 
 kubectl apply -f namespace.yaml
 # Grafana 관리자 비밀번호 — 처음 한 번 무작위로 만든다. 확인: kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d
@@ -23,5 +25,9 @@ helm upgrade --install kps prometheus-community/kube-prometheus-stack --version 
   -n monitoring -f kube-prometheus-stack.values.yaml --wait --timeout 10m
 helm upgrade --install blackbox prometheus-community/prometheus-blackbox-exporter --version "$BLACKBOX_VERSION" \
   -n monitoring -f blackbox.values.yaml --wait
-kubectl apply -f probes.yaml -f rules.yaml
+helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
+helm repo update grafana >/dev/null
+helm upgrade --install loki grafana/loki --version "$LOKI_VERSION" -n monitoring -f loki.values.yaml --wait
+helm upgrade --install alloy grafana/alloy --version "$ALLOY_VERSION" -n monitoring -f alloy.values.yaml --wait
+kubectl apply -k .
 echo "모니터링 준비됨 — Grafana: kubectl -n monitoring port-forward svc/kps-grafana 3000:80"

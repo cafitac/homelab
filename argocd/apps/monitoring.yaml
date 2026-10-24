@@ -1,4 +1,4 @@
-# 모니터링 — 차트 두 개(값은 이 저장소) + 이 저장소의 매니페스트(네임스페이스 · 프로브 · 규칙)
+# 모니터링 — 차트 네 개(kps · blackbox · loki · alloy, 값은 이 저장소) + 이 저장소의 매니페스트(네임스페이스 · 프로브 · 규칙 · 대시보드)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -19,6 +19,19 @@ spec:
       helm:
         releaseName: blackbox
         valueFiles: [$values/monitoring/blackbox.values.yaml]
+    # 로그 — Loki(저장 · 검색) + Alloy(수집). 값: monitoring/loki.values.yaml · alloy.values.yaml
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: loki
+      targetRevision: 7.5.0
+      helm:
+        releaseName: loki
+        valueFiles: [$values/monitoring/loki.values.yaml]
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: alloy
+      targetRevision: 1.14.3
+      helm:
+        releaseName: alloy
+        valueFiles: [$values/monitoring/alloy.values.yaml]
     - repoURL: https://github.com/cafitac/homelab.git
       targetRevision: main
       ref: values

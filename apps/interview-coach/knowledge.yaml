@@ -52,4 +52,5 @@ metadata:
   name: knowledge
 spec:
   selector: { app: knowledge }
-  ports: [{ port: 8792, targetPort: 8792 }]
+  # 이름 http — ServiceMonitor(monitoring.yaml)가 이 이름으로 /actuator/prometheus 를 긁는다
+  ports: [{ name: http, port: 8792, targetPort: 8792 }]

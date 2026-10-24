@@ -36,12 +36,13 @@ spec:
             summary: "interview-coach {{ $labels.job }} 지표를 5분째 못 읽는다"
             description: "파드가 죽었거나 /actuator/prometheus 가 응답하지 않는다. 대상 자체가 없으면 Service 라벨 app 과 ServiceMonitor app 을 본다"
         # ⚠️ Micrometer 는 결과 라벨 조합이 처음 생길 때 시계열을 만든다 — increase() 는 처음 생긴 시계열의 첫 값을 세지 않으므로
-        #    「30분 전에는 없던 시계열」도 함께 본다(서버가 뜬 뒤 첫 실패)
+        #    「30분 전에는 없던 시계열」도 함께 본다(서버가 뜬 뒤 첫 실패). 단 값이 0 보다 클 때만 — 브라우저 오류 카운터처럼 0 으로
+        #    미리 등록한 시계열은 새 파드가 뜨기만 해도 「새 시계열」이 된다(2026-10-24 배포 뒤 InterviewCoachClientError 오탐)
         - alert: InterviewCoachJobFailed
           expr: |
             sum by (kind) (increase(coach_pipeline_jobs_seconds_count{namespace="interview-coach", outcome=~"failed|error"}[30m])) > 0
             or
-            sum by (kind) (coach_pipeline_jobs_seconds_count{namespace="interview-coach", outcome=~"failed|error"}
+            sum by (kind) ((coach_pipeline_jobs_seconds_count{namespace="interview-coach", outcome=~"failed|error"} > 0)
               unless coach_pipeline_jobs_seconds_count{namespace="interview-coach", outcome=~"failed|error"} offset 30m)
           labels: { severity: warning }
           annotations:
@@ -51,7 +52,7 @@ spec:
           expr: |
             sum (increase(coach_llm_calls_seconds_count{namespace="interview-coach", outcome="usage_limit"}[15m])) > 0
             or
-            sum (coach_llm_calls_seconds_count{namespace="interview-coach", outcome="usage_limit"}
+            sum ((coach_llm_calls_seconds_count{namespace="interview-coach", outcome="usage_limit"} > 0)
               unless coach_llm_calls_seconds_count{namespace="interview-coach", outcome="usage_limit"} offset 15m)
           labels: { severity: critical }
           annotations:
@@ -71,7 +72,7 @@ spec:
           expr: |
             sum by (reason) (increase(coach_deepdive_turns_total{namespace="interview-coach", outcome="failed"}[30m])) > 0
             or
-            sum by (reason) (coach_deepdive_turns_total{namespace="interview-coach", outcome="failed"}
+            sum by (reason) ((coach_deepdive_turns_total{namespace="interview-coach", outcome="failed"} > 0)
               unless coach_deepdive_turns_total{namespace="interview-coach", outcome="failed"} offset 30m)
           labels: { severity: warning }
           annotations:
@@ -81,7 +82,7 @@ spec:
           expr: |
             sum by (kind) (increase(coach_client_errors_total{namespace="interview-coach", outcome="logged"}[30m])) > 0
             or
-            sum by (kind) (coach_client_errors_total{namespace="interview-coach", outcome="logged"}
+            sum by (kind) ((coach_client_errors_total{namespace="interview-coach", outcome="logged"} > 0)
               unless coach_client_errors_total{namespace="interview-coach", outcome="logged"} offset 30m)
           labels: { severity: warning }
           annotations:

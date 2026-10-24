@@ -78,6 +78,14 @@ grafana:
   resources:
     requests: { cpu: 50m, memory: 512Mi }
     limits: { cpu: 500m, memory: 512Mi }
+  # 로그(monitoring/loki.values.yaml) — Explore 에서 {namespace="interview-coach", app="server"}
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      access: proxy
+      url: http://loki.monitoring.svc:3100
+      jsonData: { maxLines: 1000 }
 
 prometheusOperator:
   resources:

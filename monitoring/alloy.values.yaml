@@ -1,0 +1,43 @@
+# grafana/alloy 1.14.3 — 파드 로그를 쿠버네티스 API 로 읽어 Loki 로 보낸다(hostPath 마운트 없음 → DaemonSet 이 아니라 Deployment 하나)
+# 범위: interview-coach namespace 만. 다른 프로젝트를 넣으려면 namespaces.names 에 더한다
+controller: { type: deployment, replicas: 1 }
+alloy:
+  configMap:
+    content: |
+      discovery.kubernetes "pods" {
+        role = "pod"
+        namespaces { names = ["interview-coach"] }
+      }
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          target_label  = "app"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+      }
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.write.default.receiver]
+      }
+      loki.write "default" {
+        endpoint { url = "http://loki.monitoring.svc:3100/loki/api/v1/push" }
+      }
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+configReloader:
+  resources:
+    requests: { cpu: 5m, memory: 16Mi }
+    limits: { cpu: 50m, memory: 64Mi }

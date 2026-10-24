@@ -5,6 +5,7 @@ resources:
   - namespace.yaml
   - probes.yaml
   - rules.yaml
+  - triage-reader.yaml
 # 대시보드 — Grafana 사이드카가 라벨 grafana_dashboard=1 인 ConfigMap 을 읽는다(이 namespace 만)
 # ⚠️ 이름에 해시를 붙이지 않는다 — monitoring 앱은 prune=false 라 이름이 바뀌면 옛 ConfigMap 이 남아 대시보드가 둘이 된다
 generatorOptions:

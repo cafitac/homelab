@@ -35,7 +35,7 @@ spec:
             - { name: TRADELAB_LAB_DB, value: /home/app/.tradelab/lab.sqlite }
             - { name: TRADELAB_MARKET_DB, value: /home/app/.tradelab/market_data.sqlite }
             # ⚠️ kustomization.yaml 의 trading-lab newTag 와 같아야 한다(이미지에도 같은 값이 구워져 있다)
-            - { name: TRADELAB_BUILD_SHA, value: 7e722493a6a0 }
+            - { name: TRADELAB_BUILD_SHA, value: 4a5f5921e5d2 }
           ports: [{ containerPort: 8080 }]
           startupProbe:
             httpGet: { path: /healthz, port: 8080 }

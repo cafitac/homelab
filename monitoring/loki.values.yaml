@@ -14,6 +14,11 @@ loki:
         index: { prefix: index_, period: 24h }
   limits_config:
     retention_period: 168h
+    # interview-coach 화면 흐름 이벤트(Alloy 가 stream="ux" 를 붙인다)만 30일 — 주간 · 월간 흐름을 보려고. 답 · 입력 글자는 없는 줄이다
+    retention_stream:
+      - selector: '{namespace="interview-coach", stream="ux"}'
+        priority: 1
+        period: 720h
     ingestion_rate_mb: 4
     ingestion_burst_size_mb: 8
   compactor:

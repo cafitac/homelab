@@ -16,3 +16,6 @@ configMapGenerator:
   - name: dashboard-interview-coach
     namespace: monitoring
     files: [dashboards/interview-coach.json]
+  - name: dashboard-interview-coach-ux
+    namespace: monitoring
+    files: [dashboards/interview-coach-ux.json]

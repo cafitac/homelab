@@ -1,0 +1,14 @@
+# 설계(ppt-workspace design 01): web 0.5코어/512Mi, 백업 Job, (S4) worker 2코어/3Gi(Chromium + Claude CLI).
+# S4 에서 worker 가 들어와도 바꾸지 않게 처음부터 설계 크기로 둔다. 저장소: data 20Gi + backups 5Gi
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 2Gi
+    limits.cpu: "3"
+    limits.memory: 4Gi
+    persistentvolumeclaims: "2"
+    requests.storage: 25Gi

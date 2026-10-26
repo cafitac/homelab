@@ -1,0 +1,20 @@
+# data: decks/<과제>/(과제별 git) + ppt.db(SQLite WAL). web 과 (S4) worker 가 같이 쓴다 — 노드가 하나라 RWO 로 충분(judge-board 와 같음).
+# backups: 매일 ppt-<YYYYmmdd>.dump — cluster/backup-offload.sh 가 내장 디스크로 꺼낸다.
+# 둘 다 local-path-retain: PVC 를 지워도 데이터는 남는다. VM 디스크가 외장 SSD 에 있어 실제 위치도 SSD 다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+spec:
+  storageClassName: local-path-retain
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 20Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backups
+spec:
+  storageClassName: local-path-retain
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 5Gi } }

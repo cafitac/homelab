@@ -1,0 +1,47 @@
+# 매일 04:40(서울) ppt.db(SQLite 온라인 백업) + decks/ 를 ppt-<YYYYmmdd>.dump 하나로, 7 일치만 남긴다.
+# 05:00 cluster/backup-offload.sh 가 내장 디스크로 꺼낸다(TARGETS 에 ppt).
+# 되살리기: tar -xzf ppt-<날짜>.dump → ppt.db 와 decks/ 를 data PVC 에 되돌린다(web 을 0 으로 줄인 뒤)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: "40 4 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+          containers:
+            - name: backup
+              image: ppt-web
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "ppt_web.admin", "backup", "--out", "/backups", "--keep-days", "7"]
+              env:
+                - { name: PPT_DATA_DIR, value: /data }
+                - { name: TZ, value: Asia/Seoul }
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: { drop: [ALL] }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { cpu: 500m, memory: 256Mi }
+              volumeMounts:
+                - { name: data, mountPath: /data }
+                - { name: backups, mountPath: /backups }
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: data }
+            - name: backups
+              persistentVolumeClaim: { claimName: backups }

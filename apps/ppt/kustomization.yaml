@@ -1,0 +1,20 @@
+# ppt.cafitac.com — cafitac/ppt-workspace 발표 작업 공간(owner 전용). S2: web(과제 목록) + 매일 백업.
+# ⭐ 이 앱을 Argo CD 에 올리기(=이 디렉터리가 main 에 들어가기) 전에 Cloudflare Access 앱 ppt(정책 owner)를 먼저 만든다.
+#    *.cafitac.com 와일드카드가 이미 Traefik 으로 오므로 Access 없이 Ingress 가 생기면 그 순간 바깥에 보인다
+#    (앱도 Cf-Access-Jwt-Assertion 을 검증해 403 을 내지만, 앞단 Access 가 첫 번째 벽이다).
+# 순서: Access 앱 → secrets.sh(ppt-access) → 이미지 빌드 → 이 PR 머지(Argo 동기화) → import.sh → 확인
+# 이미지 갱신: ppt-workspace 저장소에서 web 이미지를 빌드하고 아래 newTag 를 그 커밋으로 바꾼다
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ppt
+resources:
+  - namespace.yaml
+  - quota.yaml
+  - data.yaml
+  - web.yaml
+  - backup.yaml
+components:
+  - ../../platform/components/isolation
+images:
+  - name: ppt-web
+    newTag: "86f50ecf621e"

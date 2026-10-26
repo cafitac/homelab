@@ -16,6 +16,18 @@ spec:
       path: /actuator/prometheus
       interval: 30s
 ---
+# Umami Postgres 크기(umami.yaml 의 postgres-exporter 사이드카) — 화면 녹화가 디스크를 채우지 않게
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: umami-db
+spec:
+  selector:
+    matchLabels: { app: umami-db }
+  endpoints:
+    - port: metrics
+      interval: 60s
+---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -113,3 +125,25 @@ spec:
           annotations:
             summary: '{{ $labels.surface }} 음성 인식 오류 {{ $labels.code }} {{ $value | printf "%.0f" }}번(최근 30분)'
 
+        # 화면 녹화 · 히트맵(Umami) — 녹화 30일 보존을 넘어 커지거나 디스크 여유가 줄면. 첫 주 실측으로 기준을 다시 본다
+        - alert: InterviewCoachUmamiDbLarge
+          expr: pg_database_size_bytes{namespace="interview-coach", datname="umami"} > 3 * 1024 * 1024 * 1024
+          for: 30m
+          labels: { severity: warning }
+          annotations:
+            summary: 'Umami DB 가 {{ $value | humanize1024 }}B 다(기준 3GiB)'
+            description: "녹화(session_replay)가 대부분이다 — umami-retention 잡이 도는지, 녹화 상한(umami-setup.sh maxDuration)과 녹화 범위를 본다"
+        - alert: InterviewCoachUmamiDbExporterDown
+          expr: absent(pg_database_size_bytes{namespace="interview-coach", datname="umami"})
+          for: 30m
+          labels: { severity: warning }
+          annotations:
+            summary: "Umami DB 크기 지표가 30분째 없다"
+            description: "umami-db 파드의 exporter 사이드카 · ServiceMonitor umami-db 를 본다"
+        - alert: InterviewCoachUmamiDiskLow
+          expr: kubelet_volume_stats_available_bytes{namespace="interview-coach", persistentvolumeclaim="data-umami-db-0"} < 20 * 1024 * 1024 * 1024
+          for: 30m
+          labels: { severity: warning }
+          annotations:
+            summary: 'Umami DB 가 놓인 디스크 여유가 {{ $value | humanize1024 }}B 다(기준 20GiB)'
+            description: "local-path 볼륨은 노드 디스크(외장 SSD)를 같이 쓴다 — 다른 프로젝트 몫까지 본다"

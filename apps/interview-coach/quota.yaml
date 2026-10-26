@@ -1,4 +1,4 @@
-# 컨테이너 상한 합 약 12.6GiB(embedder 7GiB · server 2.5GiB · umami 0.75GiB) + 롤링 교체 여유. 실사용(2026-10-05) embedder 4.9GiB · 나머지 합 1GiB 미만
+# 컨테이너 상한 합 약 12.7GiB(embedder 7GiB · server 2.5GiB · umami 0.8GiB) + 롤링 교체 여유. 실사용(2026-10-05) embedder 4.9GiB · 나머지 합 1GiB 미만
 apiVersion: v1
 kind: ResourceQuota
 metadata:

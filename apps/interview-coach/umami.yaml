@@ -1,7 +1,9 @@
 # Umami v3 — interview-coach 화면 흐름 · 불편 신호의 저장소 겸 화면(퍼널 · 여정 · 세션). agent-skills ux-telemetry 스킬.
 # 브라우저는 web 의 같은 출처 경로 두 개(/ux/script.js · /ux/api/send)로만 닿는다 — Ingress 없음. 화면은 포트 포워드로만:
 #   kubectl -n interview-coach port-forward svc/umami 3000:3000  → http://localhost:3000 (처음 admin/umami → 바로 비밀번호 변경)
-# 세션 리플레이 · 히트맵은 켜지 않는다(화면의 답 글자가 녹화된다). 이벤트에는 답 · 음성 · 입력 글자가 없다(SDK · before-send 가 거른다).
+# 화면 녹화 · 히트맵은 켠다(사용자 결정 2026-10-26 「내 컴에만 저장되면 괜찮음」) — 데이터는 이 Postgres(Mac Studio 외장 SSD)에만.
+# 입력칸 값 · 비밀번호는 가리고(maskLevel moderate), 주요 여정 화면만, 페이지 로드당 10분(interview-coach deploy/ux-telemetry/umami-setup.sh).
+# 보존: 녹화 30일 · 히트맵 · 이벤트 90일(아래 CronJob). 크기 경보: postgres-exporter + monitoring.yaml.
 # 비밀값 umami-auth 는 secrets.sh 가 처음 한 번 만든다.
 apiVersion: apps/v1
 kind: StatefulSet
@@ -34,20 +36,34 @@ spec:
           resources:
             requests: { cpu: 20m, memory: 64Mi }
             limits: { cpu: 500m, memory: 256Mi }
+        # DB 크기 지표(pg_database_size_bytes) — 녹화가 디스크를 채우기 전에 경보(monitoring.yaml UmamiDbLarge)
+        - name: exporter
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+          env:
+            - { name: DATA_SOURCE_URI, value: "localhost:5432/umami?sslmode=disable" }
+            - { name: DATA_SOURCE_USER, value: umami }
+            - { name: DATA_SOURCE_PASS, valueFrom: { secretKeyRef: { name: umami-auth, key: POSTGRES_PASSWORD } } }
+          ports: [{ name: metrics, containerPort: 9187 }]
+          resources:
+            requests: { cpu: 10m, memory: 24Mi }
+            limits: { cpu: 200m, memory: 64Mi }
   volumeClaimTemplates:
     - metadata:
         name: data
       spec:
         accessModes: [ReadWriteOnce]
-        resources: { requests: { storage: 2Gi } }
+        resources: { requests: { storage: 5Gi } }
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: umami-db
+  labels: { app: umami-db }
 spec:
   selector: { app: umami-db }
-  ports: [{ port: 5432, targetPort: 5432 }]
+  ports:
+    - { name: postgres, port: 5432, targetPort: 5432 }
+    - { name: metrics, port: 9187, targetPort: 9187 }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -87,7 +103,7 @@ spec:
   selector: { app: umami }
   ports: [{ port: 3000, targetPort: 3000 }]
 ---
-# 보존: Umami 는 자체 보존 설정이 없다 — 매일 90일 넘은 행을 지운다(agent-skills skills/ux-telemetry/references/pipeline.md)
+# 보존: Umami 는 자체 보존 설정이 없다 — 매일 녹화는 30일, 히트맵 · 이벤트는 90일 넘은 행을 지운다(agent-skills skills/ux-telemetry/references/pipeline.md)
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -122,8 +138,12 @@ spec:
                   delete from event_data where created_at < now() - interval '90 days';
                   delete from website_event where created_at < now() - interval '90 days';
                   delete from session_data where created_at < now() - interval '90 days';
+                  delete from heatmap_event where created_at < now() - interval '90 days';
+                  delete from session_replay where created_at < now() - interval '30 days';
                   delete from session s where created_at < now() - interval '90 days'
-                    and not exists (select 1 from website_event e where e.session_id = s.session_id);
+                    and not exists (select 1 from website_event e where e.session_id = s.session_id)
+                    and not exists (select 1 from session_replay r where r.session_id = s.session_id);
+                  select pg_size_pretty(pg_database_size('umami')) as umami_db_size;
               resources:
                 requests: { cpu: 10m, memory: 32Mi }
                 limits: { cpu: 200m, memory: 64Mi }

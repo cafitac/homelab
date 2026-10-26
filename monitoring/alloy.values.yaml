@@ -29,17 +29,6 @@ alloy:
       }
       loki.source.kubernetes "pods" {
         targets    = discovery.relabel.pods.output
-        forward_to = [loki.process.ux.receiver]
-      }
-      // interview-coach 화면 흐름 이벤트(서버 로거 UxEvent 의 "UxEvent {json}" 한 줄)는 stream="ux" 로 따로 묶는다 —
-      // Loki 가 이 스트림만 30일 둔다(loki.values.yaml retention_stream). 세션 · 요소 같은 값은 라벨로 올리지 않는다(줄 본문에 있다)
-      loki.process "ux" {
-        stage.match {
-          selector = "{namespace=\"interview-coach\", app=\"server\"} |= \"UxEvent {\""
-          stage.static_labels {
-            values = { stream = "ux" }
-          }
-        }
         forward_to = [loki.write.default.receiver]
       }
       loki.write "default" {

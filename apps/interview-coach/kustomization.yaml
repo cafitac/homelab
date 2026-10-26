@@ -12,6 +12,7 @@ resources:
   - embedder.yaml
   - knowledge.yaml
   - server.yaml
+  - server-egress.yaml
   - web.yaml
   - backup.yaml
   - monitoring.yaml

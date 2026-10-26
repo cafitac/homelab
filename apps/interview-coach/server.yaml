@@ -14,6 +14,8 @@ spec:
     spec:
       # ⚠️ 서비스 정보를 환경변수로 주입하지 않는다 — Service server 가 SERVER_PORT=tcp://… 를 만들어 Spring 의 server.port 를 덮었다(2026-10-05)
       enableServiceLinks: false
+      # k8s API 를 쓰지 않는다 — 서비스 계정 토큰을 파드에 두지 않는다(CLI 하위 프로세스가 읽을 거리를 줄인다)
+      automountServiceAccountToken: false
       containers:
         - name: server
           image: interview-coach-server

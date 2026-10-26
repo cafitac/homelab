@@ -17,4 +17,4 @@ components:
   - ../../platform/components/isolation
 images:
   - name: ppt-web
-    newTag: "86f50ecf621e"
+    newTag: "c42c5a28dc26"

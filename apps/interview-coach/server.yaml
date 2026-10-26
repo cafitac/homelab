@@ -6,6 +6,10 @@ metadata:
   name: server
 spec:
   replicas: 1
+  # 새 파드가 시작 검사(아래 startupProbe — 나가는 길 포함)를 넘을 때까지 옛 파드가 계속 받는다
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
   selector:
     matchLabels: { app: server }
   template:
@@ -30,10 +34,15 @@ spec:
             - { name: CLAUDE_BIN, value: /home/app/.local/bin/claude }
             - { name: TZ, value: Asia/Seoul }
           ports: [{ containerPort: 8791 }]
-          # 로그인 전에는 401 이 정상이다 — 살아 있는지만 본다
+          # 시작 검사 — 앱이 HTTP 로 답하고(로그인 전 401 도 정상이라 코드는 안 본다) Claude API 까지 나가는 길이 열렸는지.
+          # 새 파드는 뜬 뒤 약 50~60초 동안 server-egress 허용 규칙이 아직 안 깔려 밖으로 못 나간다(k3s 내장 kube-router, 2026-10-27 운영 측정).
+          # 그동안 Ready 가 되면 배포마다 1분쯤 LLM 호출이 실패한다 → 연결이 될 때까지 Ready 를 미룬다(응답 코드는 무관, 연결만).
+          # 시작할 때만 본다 — 뜬 뒤 Anthropic 장애로 파드를 내리지 않게 readiness 에는 넣지 않는다. 5분 안에 못 나가면 재시작(옛 파드는 계속 받는다).
           startupProbe:
-            tcpSocket: { port: 8791 }
+            exec:
+              command: ["sh", "-c", "curl -s -o /dev/null -m 2 http://127.0.0.1:8791/actuator/health/liveness && curl -s -o /dev/null -m 3 https://api.anthropic.com/"]
             periodSeconds: 5
+            timeoutSeconds: 6
             failureThreshold: 60
           readinessProbe:
             tcpSocket: { port: 8791 }

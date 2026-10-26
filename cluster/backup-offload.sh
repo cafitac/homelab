@@ -23,6 +23,7 @@ OUT=${OUT:-$HOME/Backups/k8s}
 TARGETS=(
   "judge-board:$OUT/judge-board"
   "interview-coach:$OUT/interview-coach"
+  "ppt:$OUT/ppt"
 )
 
 log() { echo "$(date '+%F %T') $*"; }

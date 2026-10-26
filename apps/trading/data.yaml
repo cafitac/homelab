@@ -1,4 +1,5 @@
-# trading-data: lab.sqlite · market_data.sqlite · reports/ · logs/ · state/ (SQLite WAL — 쓰는 쪽은 tradelab-writer Job 하나)
+# trading-data: lab.sqlite · market_data.sqlite · reports/ · logs/ · state/ (SQLite WAL — 쓰는 쪽은 tradelab-writer Job 과, 화–토 08:30 모의 장부 Job tradelab-paper(S7) 둘.
+#   둘이 겹치면 SQLite 잠금(WAL · busy_timeout)이 쓰기를 차례로 처리한다 — job.sh 는 tradelab-writer 하나만 조정하므로 무거운 작업은 이 시각을 피한다)
 # trading-backups: 매일 백업(backup.yaml)
 # trading-stockdata: 개별 주식 연구 데이터(S5D) — stock_data.sqlite · raw/ 원본 blob. 배치 파드만 /home/app/.tradelab/stock 에 마운트한다.
 #   매일 백업 대상이 아니다(원본은 다시 받을 수 있는 공개 데이터, DB 는 원본에서 다시 만든다 — trading-system S5D 설계 07)

@@ -11,6 +11,7 @@ resources:
   - data.yaml
   - lab.yaml
   - batch.yaml
+  - paper.yaml
   - backup.yaml
 components:
   - ../../platform/components/isolation

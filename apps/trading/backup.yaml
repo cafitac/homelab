@@ -7,17 +7,21 @@
 #      kubectl -n argocd patch application root --type json -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
 #      kubectl -n argocd patch application trading --type json -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
 #   2) kubectl -n trading patch cronjob backup -p '{"spec":{"suspend":true}}' (04:15 백업도 DB 를 연다)
+#      kubectl -n trading patch cronjob tradelab-paper -p '{"spec":{"suspend":true}}' (화–토 08:30 모의 장부 Job 은 DB 에 쓴다, S7)
 #   3) kubectl -n trading scale deploy/lab --replicas=0 후 pod 가 사라질 때까지 기다린다.
-#   4) tradelab-writer Job 과 backup Job 이 하나도 돌고 있지 않은지 확인한다(kubectl -n trading get jobs,pods).
+#   4) tradelab-writer Job, backup Job, tradelab-paper Job 이 하나도 돌고 있지 않은지 확인한다(kubectl -n trading get jobs,pods).
 #   5) 현재 <db>, <db>-wal, <db>-shm 을 함께 다른 이름으로 옮겨 보관한다(-wal 에 최근 커밋이 있을 수 있다).
 #   6) <db>-wal, <db>-shm 이 남아 있지 않은지 확인한 뒤 백업본을 <db> 로 복사한다(uid/gid 10001, 0600).
 #   6b) 백업본은 DELETE-journal 이므로, 같은 임시 pod 에서 WAL 로 되돌린다:
 #      python3 -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute('PRAGMA journal_mode=WAL').fetchone()); c.close()" <db>
 #      (tradelab 의 lab DB 연결도 열 때 WAL 을 켜지만, market_data.sqlite 와 첫 reader 를 위해 명시적으로 맞춘다.)
 #   7) root 의 자동 동기화만 되돌린다. root 가 trading 의 syncPolicy 를, trading 이 lab replicas 1 과
-#      backup suspend false 를 git 대로 되돌린다:
+#      tradelab-paper suspend false 를 git 대로 되돌린다(paper.yaml 은 suspend: false 를 적어 둔다):
 #      kubectl -n argocd patch application root --type merge -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
-#      그 뒤 kubectl -n trading get deploy/lab cronjob/backup 으로 되돌아왔는지 확인한다.
+#      backup CronJob 은 git 에 suspend 필드가 없어 Argo 가 되돌리지 않는다 — 손으로 푼다:
+#      kubectl -n trading patch cronjob backup -p '{"spec":{"suspend":false}}'
+#      그 뒤 kubectl -n trading get deploy/lab cronjob/backup cronjob/tradelab-paper 로 셋 다 되돌아왔는지 확인한다
+#      (backup 이 suspend 면 매일 백업이 멈추고, tradelab-paper 가 suspend 면 장부가 전진하지 않는다. 남아 있으면 같은 patch 로 푼다).
 #   lab.sqlite 와 market_data.sqlite 모두 같은 절차다. 이 작업은 trading-data 를 마운트한 임시 pod(uid 10001)에서 한다.
 # 디스크 밖 사본: 이 PVC 는 데이터와 같은 VM 디스크 이미지에 있다. cluster/backup-offload.sh 에 trading 대상
 # (PVC trading-backups, *.sqlite · *.tar.gz)을 넣는 일은 이 PR 범위 밖이라 후속으로 남긴다. 그 전까지 MacBook 의

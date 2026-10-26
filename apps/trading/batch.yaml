@@ -1,5 +1,7 @@
 # tradelab 쓰기 Job 의 틀 — suspend: true 라 스스로 돌지 않는다. 실행은 trading-system 의 deploy/k8s/job.sh 가
-# 이 CronJob 에서 Job tradelab-writer 를 하나 만든다(한 번에 하나가 쓰기 자리 — SQLite 쓰는 쪽은 하나뿐이어야 한다).
+# 이 CronJob 에서 Job tradelab-writer 를 하나 만든다(job.sh 가 띄우는 쓰기 Job 은 한 번에 하나).
+# 이 밖의 쓰기 주체는 모의 장부 일일 Job(paper.yaml, tradelab-paper, 화–토 08:30)뿐이다. 둘이 겹치면 SQLite 잠금(WAL · busy_timeout)이
+# 쓰기를 차례로 처리한다 — 그 시각에는 무거운 job.sh 작업을 피한다.
 # 파드 계약(trading-system deploy/k8s/README.md "Pod contract for D4"):
 #  - command 를 덮지 않는다(엔트리포인트가 python -m tradelab.batch). args 는 job.sh 가 채운다
 #  - ~/.tradelab/env 는 메모리 emptyDir(1Mi): 엔트리포인트가 Secret 파일을 0600 · 실행 uid 소유로 여기 복사한다

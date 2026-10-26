@@ -1,0 +1,70 @@
+# tradelab 모의 장부 일일 전진(S7, P11). 화–토 08:30(KST): 전날 KRX 장과 밤사이 미국 장이 끝난 뒤.
+# `paper daily` = 활성 장부 메뉴의 시세·환율을 기존 읽기 전용 수집으로 받고(KRX: KIS 시세 조회, US: Yahoo, FX: FRED)
+# 모든 ACTIVE 장부를 확정된 날까지 전진시킨다. 활성 장부가 없으면 아무것도 받지 않고 exit 0.
+# 주문 경로는 없다(tradelab AGENTS.md: 실주문 경로 금지). 장부를 여는 건 소유자뿐(paper open, D127).
+# 멈추기: 이 파일의 suspend 를 true 로 바꾸는 PR(머지되면 Argo 가 적용)이 오래 가는 방법이다. kubectl patch 로 suspend 하면
+#   Argo selfHeal 이 git 의 suspend: false 로 곧 되돌린다(복원 때처럼 자동 동기화를 먼저 끈 경우만 유지된다, backup.yaml 1)).
+#   장부 하나만 멈추려면 tradelab 에서 `paper stop --book NAME`.
+# 파드 계약은 batch.yaml 과 같다(command 를 덮지 않는다, env 는 메모리 emptyDir, 자격 증명 환경변수 없음).
+# 쓰기 Job(tradelab-writer)과 겹치면 SQLite(WAL, busy_timeout)가 쓰기를 차례로 처리한다 — 무거운 job.sh 작업은 이 시각을 피한다
+# (data.yaml · batch.yaml 의 쓰기 주체 서술). DB 복원 때는 이 CronJob 도 멈춘다(backup.yaml 복원 절차 2)·4)·7)).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tradelab-paper
+spec:
+  # 명시해 둔다: 복원 절차(backup.yaml)에서 suspend 했다가 Argo 자동 동기화가 git 대로 false 로 되돌린다
+  suspend: false
+  schedule: "30 8 * * 2-6"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 604800
+      template:
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: paper
+              image: trading-batch
+              imagePullPolicy: IfNotPresent
+              args: ["paper", "daily"]
+              env:
+                - { name: TRADELAB_JOB_LABEL, value: paper-daily }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: data, mountPath: /home/app/.tradelab }
+                - { name: env, mountPath: /home/app/.tradelab/env }
+                - { name: tmp, mountPath: /tmp }
+                - { name: kis, mountPath: /secrets/kis, readOnly: true }
+              resources:
+                # 규칙 전략(K4) 재계산 + 메뉴 몇 종목 수집 — LLM 호출 없음. 쿼터(quota.yaml)의 최악의 합 안에 들도록 잡았다:
+                # 쓰기 Job·백업·lab 2파드와 겹쳐도 requests 720m/4032Mi ≤ 1500m/4Gi, limits 5.7/8064Mi ≤ 6/8Gi
+                requests: { cpu: 100m, memory: 512Mi }
+                limits: { cpu: 500m, memory: 768Mi }
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: trading-data }
+            - name: env
+              emptyDir: { medium: Memory, sizeLimit: 1Mi }
+            - name: tmp
+              emptyDir: { sizeLimit: 512Mi }
+            # KRX 시세 조회(KIS 모의 도메인, 읽기 전용) — 마운트돼 있을 때만 엔트리포인트가 설치한다
+            - name: kis
+              secret: { secretName: tradelab-kis, optional: true }

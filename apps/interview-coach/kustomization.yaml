@@ -15,6 +15,7 @@ resources:
   - web.yaml
   - backup.yaml
   - monitoring.yaml
+  - umami.yaml
 components:
   - ../../platform/components/isolation
 images:

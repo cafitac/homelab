@@ -1,0 +1,129 @@
+# Umami v3 — interview-coach 화면 흐름 · 불편 신호의 저장소 겸 화면(퍼널 · 여정 · 세션). agent-skills ux-telemetry 스킬.
+# 브라우저는 web 의 같은 출처 경로 두 개(/ux/script.js · /ux/api/send)로만 닿는다 — Ingress 없음. 화면은 포트 포워드로만:
+#   kubectl -n interview-coach port-forward svc/umami 3000:3000  → http://localhost:3000 (처음 admin/umami → 바로 비밀번호 변경)
+# 세션 리플레이 · 히트맵은 켜지 않는다(화면의 답 글자가 녹화된다). 이벤트에는 답 · 음성 · 입력 글자가 없다(SDK · before-send 가 거른다).
+# 비밀값 umami-auth 는 secrets.sh 가 처음 한 번 만든다.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: umami-db
+spec:
+  serviceName: umami-db
+  replicas: 1
+  selector:
+    matchLabels: { app: umami-db }
+  template:
+    metadata:
+      labels: { app: umami-db }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - { name: POSTGRES_USER, value: umami }
+            - { name: POSTGRES_DB, value: umami }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: umami-auth, key: POSTGRES_PASSWORD } } }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U umami -d umami"] }
+            periodSeconds: 5
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 2Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: umami-db
+spec:
+  selector: { app: umami-db }
+  ports: [{ port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: umami
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: umami }
+  template:
+    metadata:
+      labels: { app: umami }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: umami
+          # 태그는 손으로 올린다 — 올리기 전에 릴리스 노트(스키마 · /api/send 바뀜)를 본다
+          image: ghcr.io/umami-software/umami:3.4.1
+          env:
+            - { name: DATABASE_URL, valueFrom: { secretKeyRef: { name: umami-auth, key: DATABASE_URL } } }
+            - { name: APP_SECRET, valueFrom: { secretKeyRef: { name: umami-auth, key: APP_SECRET } } }
+            - { name: DISABLE_TELEMETRY, value: "1" }
+            - { name: DISABLE_UPDATES, value: "1" }
+          ports: [{ containerPort: 3000 }]
+          readinessProbe:
+            httpGet: { path: /api/heartbeat, port: 3000 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 20m, memory: 160Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: umami
+spec:
+  selector: { app: umami }
+  ports: [{ port: 3000, targetPort: 3000 }]
+---
+# 보존: Umami 는 자체 보존 설정이 없다 — 매일 90일 넘은 행을 지운다(agent-skills skills/ux-telemetry/references/pipeline.md)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: umami-retention
+spec:
+  schedule: "30 4 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          enableServiceLinks: false
+          containers:
+            - name: retention
+              image: postgres:17-alpine
+              env:
+                - { name: PGHOST, value: umami-db }
+                - { name: PGUSER, value: umami }
+                - { name: PGDATABASE, value: umami }
+                - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: umami-auth, key: POSTGRES_PASSWORD } } }
+              command:
+                - psql
+                - -v
+                - ON_ERROR_STOP=1
+                - -c
+                - |
+                  delete from event_data where created_at < now() - interval '90 days';
+                  delete from website_event where created_at < now() - interval '90 days';
+                  delete from session_data where created_at < now() - interval '90 days';
+                  delete from session s where created_at < now() - interval '90 days'
+                    and not exists (select 1 from website_event e where e.session_id = s.session_id);
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits: { cpu: 200m, memory: 64Mi }

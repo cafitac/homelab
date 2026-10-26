@@ -24,3 +24,12 @@ if ! kubectl -n "$NS" get secret db-auth >/dev/null 2>&1; then
     --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)" >/dev/null
   echo "db-auth 를 새로 만들었다"
 fi
+# Umami(umami.yaml) — DB 비밀번호 · 앱 비밀은 처음 한 번 무작위로 만든다
+if ! kubectl -n "$NS" get secret umami-auth >/dev/null 2>&1; then
+  pw=$(openssl rand -hex 24)
+  kubectl -n "$NS" create secret generic umami-auth \
+    --from-literal=POSTGRES_PASSWORD="$pw" \
+    --from-literal=DATABASE_URL="postgresql://umami:$pw@umami-db:5432/umami" \
+    --from-literal=APP_SECRET="$(openssl rand -hex 32)" >/dev/null
+  echo "umami-auth 를 새로 만들었다"
+fi

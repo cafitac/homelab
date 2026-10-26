@@ -127,3 +127,22 @@ spec:
               resources:
                 requests: { cpu: 10m, memory: 32Mi }
                 limits: { cpu: 200m, memory: 64Mi }
+---
+# analytics.cafitac.com — Umami 화면(녹화 보기 포함). 이름을 범용으로 둔 것은 나중에 다른 프로젝트도 이 Umami 를 같이 쓰게 하려는 것이다
+# (그때 Umami 를 자기 namespace 로 옮긴다). 브라우저의 수집 · 녹화 주소는 여기가 아니라 각 서비스의 같은 출처 /ux/* 다.
+# ⭐ Cloudflare Access 앱(정책 owner)이 이 호스트를 먼저 막고 있어야 한다 — *.cafitac.com 와일드카드가 이미 Traefik 으로 오므로
+#    Access 없이 이 Ingress 가 생기면 그 순간 공개된다. 녹화에는 사용자의 답 글자가 있다. Umami 로그인은 두 번째 벽이다.
+#    순서: Access 앱 → 비로그인 302 확인 → 이 PR 병합(Argo) → 다시 302 확인 → Access 로그인 뒤 Umami 로그인
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: umami
+spec:
+  rules:
+    - host: analytics.cafitac.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: umami, port: { number: 3000 } }

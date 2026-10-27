@@ -11,4 +11,4 @@ components:
   - ../../platform/components/isolation
 images:
   - name: portfolio-hub
-    newTag: f7a238aa420e
+    newTag: d693d5b85a41

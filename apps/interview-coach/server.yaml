@@ -72,7 +72,7 @@ spec:
         - name: voice-training
           persistentVolumeClaim: { claimName: voice-training }
 ---
-# 말끝 학습 클립 — <user_id>/<날짜>/<clip_id>.flac|.json, 서버가 180일 뒤 지운다(VOICE_TRAINING_RETENTION_DAYS). 클립 하나 약 100–160KB
+# 말끝 학습 클립 — <user_id>/<날짜>/<clip_id>.flac|.json, 서버가 180일 뒤 · 7GiB 넘으면 오래된 것부터 지운다. 클립 하나 약 100–160KB
 # Retain: PVC 를 지워도 데이터 폴더가 남는다 — 사용자가 지우라고 한 것은 서버 API(DELETE /api/me/voice-training/clips)로 지운다
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -81,7 +81,8 @@ metadata:
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: local-path-retain
-  resources: { requests: { storage: 10Gi } }
+  # 쿼터 30Gi 중 남은 몫(db 10 · embedder 5 · backups 5 · umami 2). 서버가 7GiB 를 넘으면 오래된 클립부터 지운다(VOICE_TRAINING_MAX_TOTAL_BYTES)
+  resources: { requests: { storage: 8Gi } }
 ---
 apiVersion: v1
 kind: Service

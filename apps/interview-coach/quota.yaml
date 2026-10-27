@@ -10,6 +10,5 @@ spec:
     # CPU 상한은 동시에 다 쓰는 값이 아니다(embedder 4 · server 2 · 나머지 각 1) — 합만 맞춘다
     limits.cpu: "14"
     limits.memory: 17Gi
-    # db 10 · embedder 5 · backups 5 · umami 2 · voice-training 10 = 32Gi
-    requests.storage: 40Gi
+    requests.storage: 30Gi
     persistentvolumeclaims: "5"

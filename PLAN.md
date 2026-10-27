@@ -1,7 +1,7 @@
 # homelab — Mac Studio 서비스를 k8s 한 클러스터로 옮기는 계획
 
 - 작성: 2026-10-05
-- 상태: 0 ~ 6 단계 완료 — 모든 프로젝트가 homelab k8s 에서 돈다(thread-example 이전 2026-10-05). 남은 것: 5 단계 뒷정리(옛 디스크 · 터널 삭제는 확인 뒤) · 6.1 후속
+- 상태: 0 ~ 6 단계 완료 — 모든 프로젝트가 homelab k8s 에서 돈다(thread-example 이전 2026-10-05, 2026-10-28 내림). 남은 것: 5 단계 뒷정리(옛 디스크 · 터널 삭제는 확인 뒤) · 6.1 후속
 - ⭐ 최종 목표 (사용자, 2026-10-05): **Mac Studio 의 모든 사이드 프로젝트를 k8s 로 전환한다.** colima 는 k8s 노드 VM 하나만 남긴다
 - 대상 호스트: Mac Studio `trading-macstudio` (M-시리즈 16코어 · 128GB · 외장 SSD `/Volumes/TradingData` 1.8TB, 여유 1.5TB)
 
@@ -218,6 +218,7 @@ homelab/
 - 옛 VM 4 개 · 외장 SSD 디스크 70G · 터널 thread-example · 토큰 삭제(2026-10-05, 사용자가 실행). 남은 터널: homelab · puri-dev
 - Grafana 대시보드 「thread-example — 운영」을 homelab Grafana 로(ConfigMap · sidecar), postgres · nginx exporter 이전 (thread-example#41)
 - ⭐ Kubernetes 기준선(W5, thread-example#42): 무릎 동시 접속 5 만 ~ 6 만, 커넥션 풀 20 · Tomcat 200 이 CPU 보다 먼저. 측정은 운영 DB 를 두고 측정용 DB(postgres-bench)로 잠시 전환 — thread-example 5 단계 끝
+- ⭐ 내림 (2026-10-28, 사용자 결정): 합성 부하를 상시로 돌리는 값(약 1 코어 · 6.9GB)에 비해 포트폴리오 가치가 작다. Argo 앱 · namespace 넷(`thread-example` · `-edge` · `-ops` · `-dev`) · DB PV(120Gi, 합성 데이터)를 지웠다. 저장소는 공개용으로 정리해 코드 · 결정 기록만 남긴다
 
 ### 6 단계 — 정리
 

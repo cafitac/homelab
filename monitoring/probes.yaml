@@ -15,7 +15,6 @@ spec:
         - https://portfolio.cafitac.com
         - https://interview.cafitac.com
         - https://gather.cafitac.com
-        - https://threads.cafitac.com
         # Cloudflare Access 로그인 페이지로 넘어간다 — 따라가서 200 이면 터널은 산 것이다
         - https://preview-hub.cafitac.com
         - https://hello.cafitac.com

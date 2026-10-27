@@ -15,6 +15,6 @@ components:
   - ../../platform/components/isolation
 images:
   - name: startup-lab
-    newTag: 047719079625
+    newTag: "b6ec9a1c9ea6"
   - name: startup-dashboard
-    newTag: 047719079625
+    newTag: "b6ec9a1c9ea6"

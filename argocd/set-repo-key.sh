@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 비공개 저장소를 Argo CD 가 읽게 한다 — 읽기 전용 배포 키(저장소 하나에만 유효)를 만들어 GitHub 과 클러스터에 넣는다.
-#   bash argocd/set-repo-key.sh cafitac/thread-example     (gh 에 cafitac 계정이 로그인돼 있어야 한다)
+#   bash argocd/set-repo-key.sh <owner>/<repo>             (gh 에 cafitac 계정이 로그인돼 있어야 한다)
 # ⭐ 개인 키는 임시 디렉터리에서 만들어 Secret 으로만 넣고 지운다 — 저장소 · 화면에 남지 않는다.
 #    다시 돌리면 같은 제목의 옛 키를 지우고 새 키로 바꾼다(키 교체).
 set -euo pipefail

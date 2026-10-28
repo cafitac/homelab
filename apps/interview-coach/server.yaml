@@ -45,6 +45,9 @@ spec:
             - { name: UMAMI_DB_URL, value: "jdbc:postgresql://umami-db:5432/umami" }
             - { name: UMAMI_DB_USERNAME, valueFrom: { secretKeyRef: { name: umami-reader, key: USERNAME, optional: true } } }
             - { name: UMAMI_DB_PASSWORD, valueFrom: { secretKeyRef: { name: umami-reader, key: PASSWORD, optional: true } } }
+            # 서버 결과 사건(채점 등급 · 약점 · 예측 · 연습 끝 · 우리 목소리 · 가입)을 Umami /api/send 로 보낸다(interview-coach docs/UX-TELEMETRY.md 「서버 결과 사건」).
+            # web 이 /ux/* 를 넘기는 곳과 같은 클러스터 안 주소. 켜고 끄기는 앱의 런타임 스위치 umami_server_events — 이 값을 비우면 아예 보내지 않는다.
+            - { name: UMAMI_ORIGIN, value: "http://umami:3000" }
             # 우리 목소리(TTS) 소리 캐시 — 아래 tts-cache PVC. 예전엔 /tmp(emptyDir)라 배포마다 비워져 미리 만들기가 문장 ~450개를 처음부터
             # 다시 합성했고, 그동안 하나뿐인 엔진을 쥐어 대화형이 504 로 기기 목소리에 넘어갔다(2026-10-28). 비밀이 아니라 Secret 이 아닌 여기 둔다
             - { name: MODEL_HOST_TTS_CACHE_DIR, value: /data/tts-cache }

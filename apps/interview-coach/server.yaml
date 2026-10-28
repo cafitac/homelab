@@ -38,6 +38,11 @@ spec:
             - { name: VOICE_TRAINING_DIR, value: /data/voice-training }
             # 말끝 모델 파일(앱이 GET /api/turn-models/<파일> 로 받는다 — interview-coach docs/design/end-of-turn.md 「합친 말끝 모델 — 그림자」)
             - { name: TURN_MODELS_DIR, value: /data/turn-models }
+            # 어드민 「행동 · 결과」가 Umami 를 읽기 전용으로 읽는다(interview-coach docs/design/behavior-insights.md). 계정 umami_reader 는 secrets.sh 가 만든다.
+            # Secret 이 아직 없으면(optional) 비어서 서버는 Umami 없이 앱 DB 결과만 보인다.
+            - { name: UMAMI_DB_URL, value: "jdbc:postgresql://umami-db:5432/umami" }
+            - { name: UMAMI_DB_USERNAME, valueFrom: { secretKeyRef: { name: umami-reader, key: USERNAME, optional: true } } }
+            - { name: UMAMI_DB_PASSWORD, valueFrom: { secretKeyRef: { name: umami-reader, key: PASSWORD, optional: true } } }
             # 우리 목소리(TTS) 소리 캐시 — 아래 tts-cache PVC. 예전엔 /tmp(emptyDir)라 배포마다 비워져 미리 만들기가 문장 ~450개를 처음부터
             # 다시 합성했고, 그동안 하나뿐인 엔진을 쥐어 대화형이 504 로 기기 목소리에 넘어갔다(2026-10-28). 비밀이 아니라 Secret 이 아닌 여기 둔다
             - { name: MODEL_HOST_TTS_CACHE_DIR, value: /data/tts-cache }

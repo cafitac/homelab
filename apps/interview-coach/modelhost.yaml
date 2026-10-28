@@ -1,0 +1,24 @@
+# 모델 호스트(Mac Studio 의 launchd `modelhost`, TTS · 이후 STT · 임베딩) — 파드는 `http://modelhost:8800` 으로 부른다.
+# 호스트의 127.0.0.1:8800 에 묶여 있고, colima VM 안에서 192.168.5.2 는 호스트 루프백으로 이어진다(judge-board runner-egress 2026-10-06 확인).
+# 셀렉터 없는 Service + 손으로 쓴 EndpointSlice. 이 Service 는 이름만 준다 — 길을 여는 것은 server-egress 의 192.168.5.2/32:8800 규칙이다(정책은 IP 로 판정).
+# 인증은 호스트가 한다(MODEL_HOST_TOKEN, Secret server-env — secrets.sh). 설계: interview-coach docs/design/model-service.md §2.3 · §4.
+apiVersion: v1
+kind: Service
+metadata:
+  name: modelhost
+spec:
+  ports:
+    - { name: http, port: 8800, targetPort: 8800, protocol: TCP }
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: modelhost
+  labels:
+    kubernetes.io/service-name: modelhost
+addressType: IPv4
+ports:
+  - { name: http, port: 8800, protocol: TCP }
+endpoints:
+  - addresses: ["192.168.5.2"]
+    conditions: { ready: true }

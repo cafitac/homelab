@@ -13,6 +13,7 @@ resources:
   - knowledge.yaml
   - server.yaml
   - server-egress.yaml
+  - modelhost.yaml
   - web.yaml
   - backup.yaml
   - monitoring.yaml

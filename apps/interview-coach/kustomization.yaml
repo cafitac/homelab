@@ -14,6 +14,7 @@ resources:
   - server.yaml
   - server-egress.yaml
   - web.yaml
+  - pdb.yaml
   - backup.yaml
   - monitoring.yaml
   - umami.yaml

@@ -20,6 +20,8 @@ spec:
       enableServiceLinks: false
       # k8s API 를 쓰지 않는다 — 서비스 계정 토큰을 파드에 두지 않는다(CLI 하위 프로세스가 읽을 거리를 줄인다)
       automountServiceAccountToken: false
+      # 내릴 때 SIGTERM 뒤 45초까지 기다린다(preStop 5초 포함) — 열린 연결이 정리될 시간
+      terminationGracePeriodSeconds: 45
       containers:
         - name: server
           image: interview-coach-server
@@ -41,7 +43,15 @@ spec:
             - { name: UMAMI_DB_URL, value: "jdbc:postgresql://umami-db:5432/umami" }
             - { name: UMAMI_DB_USERNAME, valueFrom: { secretKeyRef: { name: umami-reader, key: USERNAME, optional: true } } }
             - { name: UMAMI_DB_PASSWORD, valueFrom: { secretKeyRef: { name: umami-reader, key: PASSWORD, optional: true } } }
+            # 우리 목소리(TTS) 소리 캐시 — 아래 tts-cache PVC. 예전엔 /tmp(emptyDir)라 배포마다 비워져 미리 만들기가 문장 ~450개를 처음부터
+            # 다시 합성했고, 그동안 하나뿐인 엔진을 쥐어 대화형이 504 로 기기 목소리에 넘어갔다(2026-10-28). 비밀이 아니라 Secret 이 아닌 여기 둔다
+            - { name: MODEL_HOST_TTS_CACHE_DIR, value: /data/tts-cache }
           ports: [{ containerPort: 8791 }]
+          # 종료 시작 전에 5초 쉰다 — Service 엔드포인트에서 빠지는 것이 퍼질 시간(느린 종료 표준 패턴)
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
           # 시작 검사 — 앱이 HTTP 로 답하고(로그인 전 401 도 정상이라 코드는 안 본다) Claude API 까지 나가는 길이 열렸는지.
           # 새 파드는 뜬 뒤 약 50~60초 동안 server-egress 허용 규칙이 아직 안 깔려 밖으로 못 나간다(k3s 내장 kube-router, 2026-10-27 운영 측정).
           # 그동안 Ready 가 되면 배포마다 1분쯤 LLM 호출이 실패한다 → 연결이 될 때까지 Ready 를 미룬다(응답 코드는 무관, 연결만).
@@ -68,6 +78,7 @@ spec:
             - { name: voice-training, mountPath: /data/voice-training }
             # 서버는 읽기만 한다 — 파일은 아래 PVC 설명의 올리기 파드로 넣는다
             - { name: turn-models, mountPath: /data/turn-models, readOnly: true }
+            - { name: tts-cache, mountPath: /data/tts-cache }
           # JVM(MaxRAMPercentage=65) 옆에서 Claude CLI(node) 가 뜬다 — 1Gi 에선 보강 준비 중 OOMKilled(2026-10-14)
           resources:
             # 메모리 7일 최대 1.3GiB(2026-10-18) — 요청이 이보다 낮으면 노드 압박 때 먼저 쫓겨난다
@@ -82,6 +93,8 @@ spec:
           persistentVolumeClaim: { claimName: voice-training }
         - name: turn-models
           persistentVolumeClaim: { claimName: turn-models, readOnly: true }
+        - name: tts-cache
+          persistentVolumeClaim: { claimName: tts-cache }
 ---
 # 말끝 학습 클립 — <user_id>/<날짜>/<clip_id>.flac|.json, 서버가 180일 뒤 · 7GiB 넘으면 오래된 것부터 지운다. 클립 하나 약 100–160KB
 # Retain: PVC 를 지워도 데이터 폴더가 남는다 — 사용자가 지우라고 한 것은 서버 API(DELETE /api/me/voice-training/clips)로 지운다
@@ -104,6 +117,19 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: turn-models
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path-retain
+  resources: { requests: { storage: 1Gi } }
+---
+# TTS 소리 캐시 — <키 앞 두 글자>/<키>.pcm(키에 모델 판 · 목소리 · 읽는 글이 들어 있어 판이 바뀌면 새 파일). 서버가 256MiB(MODEL_HOST_TTS_CACHE_MAX_BYTES)를
+# 넘으면 오래 안 쓴 것부터 지운다. 지워져도 미리 만들기가 다시 채우는 캐시일 뿐이라 백업하지 않는다.
+# RWO 지만 롤링 교체(maxSurge 1) 그대로 둔다 — local-path 는 노드 하나의 폴더라 같은 노드의 옛 · 새 파드가 함께 붙는다(voice-training 과 같다).
+# 교체 중 두 파드가 같이 써도 깨지지 않는다 — 같은 폴더의 임시 파일에 쓴 뒤 원자적으로 옮기고(FileSpeechCache), 지우기는 없으면 넘어간다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tts-cache
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: local-path-retain

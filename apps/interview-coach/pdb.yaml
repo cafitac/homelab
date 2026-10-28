@@ -1,0 +1,19 @@
+# 자발적 중단(노드 drain 등) 때 최소 1개는 남긴다는 뜻을 적어 둔다. replicas: 1 인 지금은 막을 대체 파드가 없어 효과가 없고,
+# 오히려 그 노드의 파드 drain 이 막힐 수 있다 — 복제본을 2개로 늘리는 단계에서 제 구실을 한다.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: server
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: server }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: web }

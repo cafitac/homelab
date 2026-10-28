@@ -14,13 +14,14 @@ resources:
   - server.yaml
   - server-egress.yaml
   - web.yaml
+  - pdb.yaml
   - backup.yaml
   - monitoring.yaml
   - umami.yaml
 components:
   - ../../platform/components/isolation
 images:
-  - { name: interview-coach-server, newTag: 93142fbae059 }
-  - { name: interview-coach-knowledge, newTag: 93142fbae059 }
-  - { name: interview-coach-embedder, newTag: 1c9cac7dd666 }
-  - { name: interview-coach-web, newTag: 93142fbae059 }
+  - { name: interview-coach-server, newTag: c5e15ff13d86 }
+  - { name: interview-coach-knowledge, newTag: c5e15ff13d86 }
+  - { name: interview-coach-embedder, newTag: c5e15ff13d86 }
+  - { name: interview-coach-web, newTag: c5e15ff13d86 }

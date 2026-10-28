@@ -71,6 +71,9 @@ spec:
             - { name: APP_SECRET, valueFrom: { secretKeyRef: { name: umami-auth, key: APP_SECRET } } }
             - { name: DISABLE_TELEMETRY, value: "1" }
             - { name: DISABLE_UPDATES, value: "1" }
+            # 사용자 주소는 Cloudflare 가 덮어쓰는 CF-Connecting-IP 만 본다(web 의 Next rewrite 가 그대로 넘긴다) — 국가 · 지역 · 도시가
+            # 채워진다(서비스 분석 · 봇 판별, 2026-10-28 소유자 결정). 위치는 Cloudflare 헤더 → 이미지에 든 GeoLite2-City(/app/geo) 순.
+            - { name: CLIENT_IP_HEADER, value: cf-connecting-ip }
           ports: [{ containerPort: 3000 }]
           readinessProbe:
             httpGet: { path: /api/heartbeat, port: 3000 }
@@ -87,16 +90,31 @@ spec:
   selector: { app: umami }
   ports: [{ port: 3000, targetPort: 3000 }]
 ---
-# 보존: Umami 는 자체 보존 설정이 없다 — 매일 90일 넘은 행을 지운다(agent-skills skills/ux-telemetry/references/pipeline.md)
+# ⭐ 보존: 사용자 행동 데이터(이벤트 · 세션 · 녹화 session_replay · 히트맵)는 지우지 않는다 — 영구 보관(사용자 결정 2026-10-28
+#    「사용자 행동 패턴을 기반으로 항상 서비스를 개선해야 해서 사용자 모든 행동 데이터는 소중하게 모아놔야 해」).
+#    예전의 90일 삭제 CronJob(umami-retention)은 없앴다. 행을 지우는 작업을 다시 넣지 말 것.
+# 보관본: 매주 일요일 04:30(서울) DB 전체를 umami-archive PVC 에 떠 두고, 지난 보관본도 지우지 않는다(행 · 파일 모두 삭제 없음).
+#    PVC 는 local-path-retain — VM 디스크(외장 SSD) 의 /var/lib/rancher/k3s/storage/<pv>_interview-coach_umami-archive.
+#    local-path 는 용량을 강제하지 않는다 — 실제 상한은 VM 디스크(homelab.disk 경보 80 · 90%). 2026-10-28 덤프 8MB, 주 ~26MB 씩 는다.
+# 되살리기: kubectl -n interview-coach exec -i umami-db-0 -- pg_restore -U umami -d umami --clean --if-exists < <파일>
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: umami-archive
+spec:
+  storageClassName: local-path-retain
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 40Gi } }
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: umami-retention
+  name: umami-archive
 spec:
-  schedule: "30 4 * * *"
+  schedule: "30 4 * * 0"
   timeZone: Asia/Seoul
   concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 1
+  successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
@@ -106,27 +124,63 @@ spec:
           restartPolicy: OnFailure
           enableServiceLinks: false
           containers:
-            - name: retention
+            - name: archive
               image: postgres:17-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  f=/archive/umami-$(date +%Y%m%d-%H%M%S).dump
+                  pg_dump -Fc > "$f.tmp"
+                  # 목차를 읽어 온전한지 확인한 뒤에야 이름을 붙인다 — 깨진 파일이 보관본 행세를 하지 않게
+                  pg_restore --list "$f.tmp" > /dev/null
+                  mv "$f.tmp" "$f"
+                  # 지우는 것 없음 — 실패해 남은 .tmp 도 사람이 보고 지운다
+                  echo "보관 $f ($(du -h "$f" | cut -f1)), 보관본 $(ls /archive/umami-*.dump | wc -l)개 · 합 $(du -sh /archive | cut -f1)"
               env:
                 - { name: PGHOST, value: umami-db }
                 - { name: PGUSER, value: umami }
                 - { name: PGDATABASE, value: umami }
                 - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: umami-auth, key: POSTGRES_PASSWORD } } }
-              command:
-                - psql
-                - -v
-                - ON_ERROR_STOP=1
-                - -c
-                - |
-                  delete from event_data where created_at < now() - interval '90 days';
-                  delete from website_event where created_at < now() - interval '90 days';
-                  delete from session_data where created_at < now() - interval '90 days';
-                  delete from session s where created_at < now() - interval '90 days'
-                    and not exists (select 1 from website_event e where e.session_id = s.session_id);
+                - { name: TZ, value: Asia/Seoul }
+              volumeMounts:
+                - { name: archive, mountPath: /archive }
+              resources:
+                requests: { cpu: 20m, memory: 64Mi }
+                limits: { cpu: 500m, memory: 256Mi }
+          volumes:
+            - name: archive
+              persistentVolumeClaim: { claimName: umami-archive }
+---
+# ⚠️ 옛 삭제 작업을 무력화만 해 둔다 — Argo 앱이 prune: false 라 매니페스트에서 빼도 클러스터의 umami-retention 은 남아 계속 지운다.
+#    그래서 같은 이름으로 멈춤(suspend) + 아무것도 안 하는 명령을 덮어쓴다(selfHeal). 사람이
+#    kubectl -n interview-coach delete cronjob umami-retention 으로 지운 뒤 이 블록을 빼도 된다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: umami-retention
+spec:
+  suspend: true
+  schedule: "30 4 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          containers:
+            - name: retention
+              image: postgres:17-alpine
+              command: ["sh", "-c", "echo 'umami-retention 은 꺼졌다 — 행동 데이터는 지우지 않는다(2026-10-28)'"]
               resources:
                 requests: { cpu: 10m, memory: 32Mi }
-                limits: { cpu: 200m, memory: 64Mi }
+                limits: { cpu: 100m, memory: 32Mi }
 ---
 # analytics.cafitac.com — Umami 화면(녹화 보기 포함). 이름을 범용으로 둔 것은 나중에 다른 프로젝트도 이 Umami 를 같이 쓰게 하려는 것이다
 # (그때 Umami 를 자기 namespace 로 옮긴다). 브라우저의 수집 · 녹화 주소는 여기가 아니라 각 서비스의 같은 출처 /ux/* 다.

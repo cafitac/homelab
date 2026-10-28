@@ -1,7 +1,7 @@
 # server 의 나가는 길을 좁힌다 — Claude CLI 가 하위 프로세스로 돌며 웹 조사에서 아무 URL 이나 연다(WebFetch).
 # 막지 않으면 IP · 내부 이름으로 192.168.5.2(맥 호스트) · 클러스터 서비스 · k8s API 에 닿는다(2026-10-26 플랫폼 보안 점검,
 # ai-daily egress · judge-board runner-egress 와 같은 이유, 같은 대역). 앱 쪽에서도 WebFetch 훅이 IP · 내부 이름을 막는다 — 이건 그 아래 층.
-# 허용: DB(db:5432) · knowledge(8792) · 모델 호스트(192.168.5.2/32:8800 — 아래) · 클러스터 DNS · 인터넷(Claude API · 웹 조사). server 는 embedder 를 직접 부르지 않는다(knowledge 가 부른다).
+# 허용: DB(db:5432) · knowledge(8792) · 모델 호스트(192.168.5.2/32:8800, IP 로 직접 — 아래) · 클러스터 DNS · 인터넷(Claude API · 웹 조사). server 는 embedder 를 직접 부르지 않는다(knowledge 가 부른다).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -20,7 +20,9 @@ spec:
             matchLabels: { app: knowledge }
       ports: [{ port: 8792, protocol: TCP }]
     # 모델 호스트(Mac Studio launchd `modelhost`, 호스트 127.0.0.1:8800 — colima VM 안에서 192.168.5.2 는 호스트 루프백으로 이어진다).
-    # 아래 인터넷 규칙이 192.168/16 을 빼므로 이 한 곳만 따로 연다. 호스트의 다른 포트(sshd · whisper-server 등)는 계속 막힌다. 서비스 이름은 modelhost.yaml.
+    # 아래 인터넷 규칙이 192.168/16 을 빼므로 이 한 곳만 따로 연다. 호스트의 다른 포트(sshd · whisper-server 등)는 계속 막힌다.
+    # 서버는 이름이 아니라 IP 로 부른다(MODEL_HOST_URL=http://192.168.5.2:8800). 셀렉터 없는 Service + EndpointSlice 로 `modelhost` 이름을 주려 했으나
+    # Argo CD 기본 resource.exclusions 가 discovery.k8s.io EndpointSlice(와 v1 Endpoints)를 동기화에서 빼서 EndpointSlice 가 안 만들어진다(Service 만 남아 연결 거절).
     - to:
         - ipBlock: { cidr: 192.168.5.2/32 }
       ports: [{ port: 8800, protocol: TCP }]

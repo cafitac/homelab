@@ -20,7 +20,7 @@ resources:
 components:
   - ../../platform/components/isolation
 images:
-  - { name: interview-coach-server, newTag: 036fbe218d1f }
+  - { name: interview-coach-server, newTag: af39b20f0b7c }
   - { name: interview-coach-knowledge, newTag: f3be82fb3dba }
   - { name: interview-coach-embedder, newTag: e83d1e9c0fd6 }
   - { name: interview-coach-web, newTag: 3b154809f3e1 }

@@ -1,7 +1,10 @@
-# Umami v3 — interview-coach 화면 흐름 · 불편 신호의 저장소 겸 화면(퍼널 · 여정 · 세션). agent-skills ux-telemetry 스킬.
-# 브라우저는 web 의 같은 출처 경로 두 개(/ux/script.js · /ux/api/send)로만 닿는다 — Ingress 없음. 화면은 포트 포워드로만:
-#   kubectl -n interview-coach port-forward svc/umami 3000:3000  → http://localhost:3000 (처음 admin/umami → 바로 비밀번호 변경)
-# 세션 리플레이 · 히트맵은 켜지 않는다(화면의 답 글자가 녹화된다). 이벤트에는 답 · 음성 · 입력 글자가 없다(SDK · before-send 가 거른다).
+# Umami v3 — interview-coach 화면 흐름 · 불편 신호의 저장소 겸 화면(퍼널 · 여정 · 세션 · 녹화 · 히트맵). agent-skills ux-telemetry 스킬.
+# 브라우저의 수집 · 녹화는 web 의 같은 출처 /ux/*(script.js · recorder.js · api/send · api/record)로만 닿는다.
+# 화면은 analytics.cafitac.com(아래 Ingress — Cloudflare Access 뒤, 그다음 Umami 로그인). 포트 포워드(svc/umami 3000)도 된다.
+# 세션 녹화 · 히트맵은 켜 둔다(사용자 결정 2026-10-26, 녹화 유지 재확인 2026-10-28):
+#   - 주요 여정 화면만 녹화한다(web lib/ux.ts recordable). 나머지 화면(관리 · 설정 · 자료 · 사전 · 성장 · 개요 …)은 data-ux-no-record 로 막는다.
+#   - 입력칸 값은 가린다(비밀번호 포함). 화면에 보이는 글(질문 · 답 · 피드백)은 녹화에 남는다. 이벤트 속성에는 답 · 음성 · 입력 글자가 없다(SDK · before-send 가 거른다).
+#   - 보존: 녹화 · 이벤트 · 세션 · 히트맵을 지우지 않는다. 매주 DB 전체를 umami-archive 에 떠 둔다(아래 「보존」).
 # 비밀값 umami-auth 는 secrets.sh 가 처음 한 번 만든다.
 apiVersion: apps/v1
 kind: StatefulSet

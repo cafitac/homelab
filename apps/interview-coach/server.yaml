@@ -35,6 +35,8 @@ spec:
             - { name: KNOWLEDGE_URL, value: "http://knowledge:8792" }
             - { name: CLAUDE_BIN, value: /home/app/.local/bin/claude }
             - { name: TZ, value: Asia/Seoul }
+            # 로그인 쿠키 ic_session 에 Secure 를 붙인다 — 서비스는 HTTPS(interview.cafitac.com)로만 열린다. 서버 기본값이 false 라 여기서 켠다
+            - { name: COOKIE_SECURE, value: "true" }
             - { name: VOICE_TRAINING_DIR, value: /data/voice-training }
             # 말끝 모델 파일(앱이 GET /api/turn-models/<파일> 로 받는다 — interview-coach docs/design/end-of-turn.md 「합친 말끝 모델 — 그림자」)
             - { name: TURN_MODELS_DIR, value: /data/turn-models }

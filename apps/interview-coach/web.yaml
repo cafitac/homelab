@@ -5,6 +5,10 @@ metadata:
   name: web
 spec:
   replicas: 1
+  # 새 파드가 Ready 가 될 때까지 옛 파드가 계속 받는다(기본 25%/25% 는 replicas 1 에서 틈이 날 수 있다)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
   selector:
     matchLabels: { app: web }
   template:
@@ -13,14 +17,27 @@ spec:
     spec:
       # ⚠️ 서비스 정보를 환경변수로 주입하지 않는다 — Service server 가 SERVER_PORT=tcp://… 를 만들어 Spring 의 server.port 를 덮었다(2026-10-05)
       enableServiceLinks: false
+      # 내릴 때 SIGTERM 뒤 30초까지 기다린다(preStop 5초 포함)
+      terminationGracePeriodSeconds: 30
       containers:
         - name: web
           image: interview-coach-web
           imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 8790 }]
+          # 종료 시작 전에 5초 쉰다 — Service 엔드포인트에서 빠지는 것이 퍼질 시간
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
           readinessProbe:
             httpGet: { path: /login, port: 8790 }
             periodSeconds: 10
+          # 응답 없이 멈춘 화면 서버를 재시작한다 — 90초(15초 x 6) 넘게 /login 이 답하지 않으면
+          livenessProbe:
+            httpGet: { path: /login, port: 8790 }
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
           resources:
             requests: { cpu: 50m, memory: 192Mi }
             limits: { cpu: "1", memory: 512Mi }

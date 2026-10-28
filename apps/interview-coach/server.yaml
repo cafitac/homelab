@@ -20,6 +20,8 @@ spec:
       enableServiceLinks: false
       # k8s API 를 쓰지 않는다 — 서비스 계정 토큰을 파드에 두지 않는다(CLI 하위 프로세스가 읽을 거리를 줄인다)
       automountServiceAccountToken: false
+      # 내릴 때 SIGTERM 뒤 45초까지 기다린다(preStop 5초 포함) — 열린 연결이 정리될 시간
+      terminationGracePeriodSeconds: 45
       containers:
         - name: server
           image: interview-coach-server
@@ -40,6 +42,11 @@ spec:
             # 다시 합성했고, 그동안 하나뿐인 엔진을 쥐어 대화형이 504 로 기기 목소리에 넘어갔다(2026-10-28). 비밀이 아니라 Secret 이 아닌 여기 둔다
             - { name: MODEL_HOST_TTS_CACHE_DIR, value: /data/tts-cache }
           ports: [{ containerPort: 8791 }]
+          # 종료 시작 전에 5초 쉰다 — Service 엔드포인트에서 빠지는 것이 퍼질 시간(느린 종료 표준 패턴)
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
           # 시작 검사 — 앱이 HTTP 로 답하고(로그인 전 401 도 정상이라 코드는 안 본다) Claude API 까지 나가는 길이 열렸는지.
           # 새 파드는 뜬 뒤 약 50~60초 동안 server-egress 허용 규칙이 아직 안 깔려 밖으로 못 나간다(k3s 내장 kube-router, 2026-10-27 운영 측정).
           # 그동안 Ready 가 되면 배포마다 1분쯤 LLM 호출이 실패한다 → 연결이 될 때까지 Ready 를 미룬다(응답 코드는 무관, 연결만).

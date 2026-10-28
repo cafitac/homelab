@@ -1,7 +1,7 @@
 # server 의 나가는 길을 좁힌다 — Claude CLI 가 하위 프로세스로 돌며 웹 조사에서 아무 URL 이나 연다(WebFetch).
 # 막지 않으면 IP · 내부 이름으로 192.168.5.2(맥 호스트) · 클러스터 서비스 · k8s API 에 닿는다(2026-10-26 플랫폼 보안 점검,
 # ai-daily egress · judge-board runner-egress 와 같은 이유, 같은 대역). 앱 쪽에서도 WebFetch 훅이 IP · 내부 이름을 막는다 — 이건 그 아래 층.
-# 허용: DB(db:5432) · knowledge(8792) · 모델 호스트(192.168.5.2/32:8800, IP 로 직접 — 아래) · 클러스터 DNS · 인터넷(Claude API · 웹 조사). server 는 embedder 를 직접 부르지 않는다(knowledge 가 부른다).
+# 허용: DB(db:5432) · Umami DB(umami-db:5432, 어드민 「행동 · 결과」 읽기 전용) · knowledge(8792) · 모델 호스트(192.168.5.2/32:8800, IP 로 직접 — 아래) · 클러스터 DNS · 인터넷(Claude API · 웹 조사). server 는 embedder 를 직접 부르지 않는다(knowledge 가 부른다).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -14,6 +14,11 @@ spec:
     - to:
         - podSelector:
             matchLabels: { app: db }
+      ports: [{ port: 5432, protocol: TCP }]
+    # Umami Postgres — 어드민 「행동 · 결과」가 읽기 전용 계정(umami_reader, SELECT 세 표만)으로 읽는다(interview-coach docs/design/behavior-insights.md)
+    - to:
+        - podSelector:
+            matchLabels: { app: umami-db }
       ports: [{ port: 5432, protocol: TCP }]
     - to:
         - podSelector:

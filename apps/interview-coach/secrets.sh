@@ -33,3 +33,29 @@ if ! kubectl -n "$NS" get secret umami-auth >/dev/null 2>&1; then
     --from-literal=APP_SECRET="$(openssl rand -hex 32)" >/dev/null
   echo "umami-auth 를 새로 만들었다"
 fi
+# Umami 읽기 전용 계정 — server 의 어드민 「행동 · 결과」가 쓴다(interview-coach docs/design/behavior-insights.md).
+# 화면 흐름 세 표(website_event · event_data · session)에 SELECT 만. 여러 번 돌려도 된다(비밀번호는 처음 한 번만 만든다).
+# umami-db 가 떠 있어야 한다(Umami PR 병합 뒤). 안 떠 있으면 건너뛰고 다음에 다시 돌린다.
+if kubectl -n "$NS" get pod umami-db-0 >/dev/null 2>&1; then
+  if ! kubectl -n "$NS" get secret umami-reader >/dev/null 2>&1; then
+    kubectl -n "$NS" create secret generic umami-reader \
+      --from-literal=USERNAME=umami_reader --from-literal=PASSWORD="$(openssl rand -hex 24)" >/dev/null
+    echo "umami-reader 를 새로 만들었다"
+  fi
+  reader_pw=$(kubectl -n "$NS" get secret umami-reader -o jsonpath='{.data.PASSWORD}' | base64 -d)
+  # 비밀번호는 표준 입력의 psql 변수로만 넘긴다(명령줄 · 로그에 남지 않게)
+  printf '%s\n' "\\set pw '$reader_pw'" "
+    DO \$\$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'umami_reader') THEN CREATE ROLE umami_reader LOGIN; END IF;
+    END \$\$;
+    ALTER ROLE umami_reader WITH LOGIN PASSWORD :'pw';
+    ALTER ROLE umami_reader SET default_transaction_read_only = on;
+    GRANT CONNECT ON DATABASE umami TO umami_reader;
+    GRANT USAGE ON SCHEMA public TO umami_reader;
+    GRANT SELECT ON website_event, event_data, session TO umami_reader;" \
+    | kubectl -n "$NS" exec -i umami-db-0 -- psql -X -q -v ON_ERROR_STOP=1 -U umami -d umami >/dev/null
+  unset reader_pw
+  echo "umami_reader(읽기 전용) 권한을 맞췄다 — server 를 재시작하면 읽는다: kubectl -n $NS rollout restart deploy/server"
+else
+  echo "umami-db-0 가 없어 umami_reader 를 건너뛰었다 — Umami 를 띄운 뒤 다시 실행"
+fi

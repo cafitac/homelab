@@ -36,6 +36,11 @@ spec:
             - { name: VOICE_TRAINING_DIR, value: /data/voice-training }
             # 말끝 모델 파일(앱이 GET /api/turn-models/<파일> 로 받는다 — interview-coach docs/design/end-of-turn.md 「합친 말끝 모델 — 그림자」)
             - { name: TURN_MODELS_DIR, value: /data/turn-models }
+            # 어드민 「행동 · 결과」가 Umami 를 읽기 전용으로 읽는다(interview-coach docs/design/behavior-insights.md). 계정 umami_reader 는 secrets.sh 가 만든다.
+            # Secret 이 아직 없으면(optional) 비어서 서버는 Umami 없이 앱 DB 결과만 보인다.
+            - { name: UMAMI_DB_URL, value: "jdbc:postgresql://umami-db:5432/umami" }
+            - { name: UMAMI_DB_USERNAME, valueFrom: { secretKeyRef: { name: umami-reader, key: USERNAME, optional: true } } }
+            - { name: UMAMI_DB_PASSWORD, valueFrom: { secretKeyRef: { name: umami-reader, key: PASSWORD, optional: true } } }
           ports: [{ containerPort: 8791 }]
           # 시작 검사 — 앱이 HTTP 로 답하고(로그인 전 401 도 정상이라 코드는 안 본다) Claude API 까지 나가는 길이 열렸는지.
           # 새 파드는 뜬 뒤 약 50~60초 동안 server-egress 허용 규칙이 아직 안 깔려 밖으로 못 나간다(k3s 내장 kube-router, 2026-10-27 운영 측정).

@@ -1,5 +1,6 @@
 # 앱 지표 수집 · 경보 규칙. 지표 목록 · 뜻은 interview-coach 저장소 docs/MONITORING.md
-# ⭐ 경보는 Alertmanager 화면 · API 에만 남는다 — 수신처를 연결하지 않는다(사용자 결정 2026-10-05 · 2026-10-24 「경보는 일단 안 해도」).
+# ⭐ 경보는 Alertmanager 화면 · API 에 남고, severity critical · warning 은 Discord 로도 간다(사용자 결정 2026-10-29 「디스코드로 하고 웹 후크 발급받아놨어」 — 2026-10-05 · 10-24 「연결하지 말자」를 대체).
+#    라우팅: monitoring/kube-prometheus-stack.values.yaml 의 alertmanager.config
 #    나중에 에이전트가 이 경보를 읽어 처리한다(interview-coach .dev/features/20261024-monitoring S6)
 # 대시보드는 monitoring/dashboards/interview-coach.json (Grafana 사이드카가 monitoring namespace 만 본다)
 apiVersion: monitoring.coreos.com/v1

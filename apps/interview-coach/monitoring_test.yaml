@@ -1,0 +1,63 @@
+# promtool 단위 시험(이 저장소 첫 promtool 시험) — InterviewCoachAudioQualityDegradedRateHigh 하나만 본다.
+# monitoring.yaml 은 ServiceMonitor + PrometheusRule 을 한 파일에 담은 쿠버네티스 매니페스트라 promtool 이 그대로
+# 못 읽는다(순수 Prometheus rule_files 형식이 아니다) — promtool-test.sh 가 PrometheusRule.spec 만 뽑아
+# monitoring.rules.generated.yaml(커밋 안 함, .gitignore)로 만들고 이 파일로 돌린다.
+#   bash apps/interview-coach/promtool-test.sh
+rule_files:
+  - monitoring.rules.generated.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - name: "저하율이 30% 넘고 표본이 10개 이상이면 reason 별로 울린다"
+    interval: 1m
+    input_series:
+      # 분모 — 61분 동안 1분에 1문장씩(1시간 증가량 ≈ 60, 최소 표본 10 을 넉넉히 넘는다)
+      - series: 'coach_audio_quality_sentences_total{namespace="interview-coach"}'
+        values: "0+1x61"
+      # tail_cut 사유 — 1분에 0.5건씩(1시간 증가량 ≈ 30 → 비율 50%, 임계값 30% 를 넘는다)
+      - series: 'coach_audio_quality_degraded_total{namespace="interview-coach", reason="tail_cut"}'
+        values: "0+0.5x61"
+      # low_mos 사유는 전혀 안 남(알려진 reason 이 0 으로 미리 등록돼 있다는 전제 — 0 그대로면 분자에 안 낀다)
+      - series: 'coach_audio_quality_degraded_total{namespace="interview-coach", reason="low_mos"}'
+        values: "0x61"
+    alert_rule_test:
+      - eval_time: 61m
+        alertname: InterviewCoachAudioQualityDegradedRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              reason: tail_cut
+            exp_annotations:
+              summary: 'TTS 문장의 50% 가 음질 저하 사유 tail_cut 로 걸렸다(최근 1시간)'
+              description: >-
+                사유 코드별 뜻은 interview-coach 저장소 docs/MONITORING.md 와 modelhost dsp.py. 문장 단위 값은 Postgres tts_audio_quality_events
+                (reasons · 음높이 흔들림 · 옥타브 점프 · 유성음 비율 · 말 속도 · 멈춤 길이)에서 사유별 · 시간대별로 본다. 최근 modelhost · 모델 · 참조 음성
+                변경이 있었는지 확인한다.
+
+  - name: "저하율이 30% 아래면 표본이 충분해도 울리지 않는다"
+    interval: 1m
+    input_series:
+      - series: 'coach_audio_quality_sentences_total{namespace="interview-coach"}'
+        values: "0+1x61"
+      # tail_cut 1시간 증가량 ≈ 6 → 비율 10%, 임계값 30% 아래
+      - series: 'coach_audio_quality_degraded_total{namespace="interview-coach", reason="tail_cut"}'
+        values: "0+0.1x61"
+    alert_rule_test:
+      - eval_time: 61m
+        alertname: InterviewCoachAudioQualityDegradedRateHigh
+        exp_alerts: []
+
+  - name: "비율은 높아도 표본이 10건 미만이면(사용자 한 명 — 트래픽이 거의 없던 시간) 울리지 않는다"
+    interval: 1m
+    input_series:
+      # 분모 1시간 증가량 ≈ 6 < 10(최소 표본 가드)
+      - series: 'coach_audio_quality_sentences_total{namespace="interview-coach"}'
+        values: "0+0.1x61"
+      # 비율만 보면 50% 지만 표본 가드가 막는다
+      - series: 'coach_audio_quality_degraded_total{namespace="interview-coach", reason="tail_cut"}'
+        values: "0+0.05x61"
+    alert_rule_test:
+      - eval_time: 61m
+        alertname: InterviewCoachAudioQualityDegradedRateHigh
+        exp_alerts: []

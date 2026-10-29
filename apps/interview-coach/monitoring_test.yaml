@@ -1,4 +1,5 @@
-# promtool 단위 시험(이 저장소 첫 promtool 시험) — InterviewCoachAudioQualityDegradedRateHigh 하나만 본다.
+# promtool 단위 시험(이 저장소 첫 promtool 시험, #164 에서 시작) — InterviewCoachAudioQualityDegradedRateHigh ·
+# InterviewCoachModelhostDown(SERVER-MODELHOST-LIVENESS, #482) 를 본다.
 # monitoring.yaml 은 ServiceMonitor + PrometheusRule 을 한 파일에 담은 쿠버네티스 매니페스트라 promtool 이 그대로
 # 못 읽는다(순수 Prometheus rule_files 형식이 아니다) — promtool-test.sh 가 PrometheusRule.spec 만 뽑아
 # monitoring.rules.generated.yaml(커밋 안 함, .gitignore)로 만들고 이 파일로 돌린다.
@@ -61,3 +62,56 @@ tests:
       - eval_time: 61m
         alertname: InterviewCoachAudioQualityDegradedRateHigh
         exp_alerts: []
+
+  - name: "modelhost 가 2분 넘게 안 닿으면(게이지 0) 울린다 — SERVER-MODELHOST-LIVENESS"
+    interval: 30s
+    input_series:
+      # 게이지라 그대로 둔다(increase() 가 아니다) — 3분 내내 0
+      - series: 'coach_modelhost_up{namespace="interview-coach"}'
+        values: "0x6"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: InterviewCoachModelhostDown
+        exp_alerts: [] # for 2m 을 아직 안 채웠다
+      - eval_time: 3m
+        alertname: InterviewCoachModelhostDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: interview-coach
+            exp_annotations:
+              summary: "modelhost(TTS 호스트)가 2분 넘게 안 닿거나 준비되지 않았다"
+              description: "server 가 30초마다 modelhost /v1/health 를 직접 두드린 결과(coach_modelhost_up) — 음성 코칭이
+                전부 막힌다(Apple 목소리로도 안 넘어간다, 그건 서버가 호스트를 부른 뒤에나 결정한다). ssh 로 Mac Studio
+                에서 /v1/health · launchd 로그(~/Library/Logs/modelhost/modelhost.log)를 먼저 본다 — 2026-10-30
+                사건은 외장 SSD 가 TCC 로 막혀 디스크 I/O 가 멈춘 것이었다."
+
+  - name: "modelhost 가 2분 안에 다시 닿으면(게이지 1 로 돌아옴) 안 울린다"
+    interval: 30s
+    input_series:
+      - series: 'coach_modelhost_up{namespace="interview-coach"}'
+        values: "0x2 1x6" # 1분 동안 0, 그 뒤로는 1
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: InterviewCoachModelhostDown
+        exp_alerts: []
+
+  - name: "coach_modelhost_up 시계열이 아예 없으면(설정을 잃음) absent() 로 그래도 울린다"
+    interval: 30s
+    input_series:
+      # coach_modelhost_up 과 무관한 시계열만 있다 — "서버는 떠 있다" 를 흉내(이 시험 자체에는 영향 없음)
+      - series: 'up{namespace="interview-coach", job="server"}'
+        values: "1x6"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: InterviewCoachModelhostDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: interview-coach
+            exp_annotations:
+              summary: "modelhost(TTS 호스트)가 2분 넘게 안 닿거나 준비되지 않았다"
+              description: "server 가 30초마다 modelhost /v1/health 를 직접 두드린 결과(coach_modelhost_up) — 음성 코칭이
+                전부 막힌다(Apple 목소리로도 안 넘어간다, 그건 서버가 호스트를 부른 뒤에나 결정한다). ssh 로 Mac Studio
+                에서 /v1/health · launchd 로그(~/Library/Logs/modelhost/modelhost.log)를 먼저 본다 — 2026-10-30
+                사건은 외장 SSD 가 TCC 로 막혀 디스크 I/O 가 멈춘 것이었다."

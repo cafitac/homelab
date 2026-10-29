@@ -35,8 +35,50 @@ prometheus:
     ruleSelectorNilUsesHelmValues: false
 
 alertmanager:
-  # ⭐ 수신처는 연결하지 않는다(사용자 결정 2026-10-05 「아직 연결하지말자」). 경보는 Alertmanager 화면에서만 본다.
-  #    창구가 정해지면 config.receivers 에 추가하고 route 를 바꾼다
+  # ⭐ 수신처는 Discord 웹훅 하나(사용자 결정 2026-10-29 「디스코드로 하고 웹 후크 발급받아놨어」 — 2026-10-05 「아직 연결하지말자」를 대체).
+  #    웹훅 주소는 저장소에 없다 — Secret alertmanager-discord(키 webhook-url)를 monitoring 에 먼저 만들어야 한다.
+  #    ⚠️ Secret 이 없으면 alertmanager 파드가 볼륨 마운트에서 막혀 뜨지 못한다. 만든 뒤에 이 변경을 반영한다.
+  #    만들기: kubectl -n monitoring create secret generic alertmanager-discord --from-literal=webhook-url='<웹훅 주소>'
+  config:
+    global:
+      resolve_timeout: 5m
+    # inhibit_rules(차트 기본: critical 이 떠 있으면 같은 대상의 warning · info 를 억제)와 templates 는 차트 기본값을 그대로 쓴다
+    route:
+      receiver: "null"
+      group_by: [alertname, namespace]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      routes:
+        # 하트비트 · 차트의 억제용 경보는 어디로도 보내지 않는다
+        - receiver: "null"
+          matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
+        # 이 저장소의 규칙(monitoring/rules.yaml · apps/interview-coach/monitoring.yaml) — severity 는 critical · warning 두 가지뿐이다
+        - receiver: discord
+          matchers:
+            - severity =~ "critical|warning"
+            - alertname =~ "InterviewCoach.*|NodeDataDisk.*|PrometheusStorageNearRetentionSize|PublicSiteDown"
+        # 우리 앱 namespace 에서 난 차트 기본 경보(CrashLoop · 파드 미준비 등) — 그 밖의 차트 기본 경보는 기본 수신처 null
+        - receiver: discord
+          matchers:
+            - severity =~ "critical|warning"
+            - namespace =~ "interview-coach|judge-board|ai-daily|portfolio|ppt|trading|startup|preview-hub"
+    receivers:
+      - name: "null"
+      - name: discord
+        discord_configs:
+          - send_resolved: true
+            webhook_url_file: /etc/alertmanager/secrets/alertmanager-discord/webhook-url
+            title: '{{ if eq .Status "firing" }}🔥 경보{{ else }}✅ 해소{{ end }} {{ .CommonLabels.alertname }}{{ with .CommonLabels.namespace }} ({{ . }}){{ end }}'
+            message: |-
+              {{ range .Alerts -}}
+              **{{ .Labels.alertname }}** · 심각도 {{ .Labels.severity }}{{ with .Labels.namespace }} · namespace {{ . }}{{ end }}
+              {{ with .Annotations.summary }}{{ . }}
+              {{ end -}}
+              {{ with .Annotations.description }}{{ . }}
+              {{ end -}}
+              시작 {{ .StartsAt | tz "Asia/Seoul" | date "2006-01-02 15:04:05" }} KST{{ if eq .Status "resolved" }} · 해소 {{ .EndsAt | tz "Asia/Seoul" | date "2006-01-02 15:04:05" }} KST{{ end }}
+              {{ end }}
   ingress:
     enabled: true
     ingressClassName: traefik
@@ -44,6 +86,8 @@ alertmanager:
     paths: [/]
   alertmanagerSpec:
     externalUrl: https://alertmanager.cafitac.com
+    # /etc/alertmanager/secrets/alertmanager-discord/webhook-url 로 마운트된다
+    secrets: [alertmanager-discord]
     resources:
       requests: { cpu: 20m, memory: 64Mi }
       limits: { cpu: 200m, memory: 256Mi }

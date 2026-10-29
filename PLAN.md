@@ -22,7 +22,7 @@ colima 프로필(= VM)을 프로젝트마다 하나씩 두는 지금 구조에�
 
 - 모든 서비스 데이터는 외장 SSD 에 둔다.
 - 프로젝트마다 자원을 명확히 분리한다 → namespace + ResourceQuota + LimitRange + NetworkPolicy.
-- 경보는 Mac Studio 전체 범위로 만들되, 받는 창구는 사용자가 정할 때까지 연결하지 않는다.
+- 경보는 Mac Studio 전체 범위로 만들되, 받는 창구는 사용자가 정할 때까지 연결하지 않는다. → 2026-10-29 사용자가 Discord 웹훅으로 정했다(monitoring/kube-prometheus-stack.values.yaml)
 - puri 는 사용자 프로젝트가 아니다 — 소유자와 상의 없이 옮기지 않는다.
 - earlypay-tests 는 회사 테스트용 — 대상이 아니다.
 
@@ -33,7 +33,7 @@ Mac Studio (macOS)
 └─ colima 프로필 k8s  (vz · virtiofs · 디스크 = 외장 SSD 심볼릭 링크)
    └─ k3s 단일 노드
       ├─ platform        cloudflared(터널 1개) · Traefik · local-path(SSD) · metrics
-      ├─ monitoring      kube-prometheus-stack (경보 규칙만, 수신처 미연결)
+      ├─ monitoring      kube-prometheus-stack (경보 규칙 + Discord 수신처)
       ├─ portfolio       nginx
       ├─ interview-coach web · server · knowledge · embedder · postgres(pgvector) · 백업 CronJob
       ├─ judge-board     board · frontend · postgres · runner(+ 채점 Job)
@@ -115,7 +115,7 @@ homelab/
 - [x] 터널 `homelab` + cloudflared 2 개 — 터널 ID · 자격 증명은 저장소 밖(Secret)
 - [x] `hello.cafitac.com` 외부 200 · VM 재시작 뒤 손대지 않고 200 · PV 내용 그대로 · 전역 docker 컨텍스트 그대로
 - [x] 격리 컴포넌트(`platform/components/isolation`): 다른 namespace → 차단, 같은 namespace · Traefik → 허용, 쿼터 초과 파드 거부
-- [x] monitoring — kube-prometheus-stack 91.9.0 · blackbox(공개 주소 6 개, colima 쪽 서비스 포함) · 규칙 4 개(노드 디스크 80/90% · 사이트 다운 · Prometheus 크기). Prometheus 보존 15 일 · 25GB(PVC 30Gi). Alertmanager 수신처 없음
+- [x] monitoring — kube-prometheus-stack 91.9.0 · blackbox(공개 주소 6 개, colima 쪽 서비스 포함) · 규칙 4 개(노드 디스크 80/90% · 사이트 다운 · Prometheus 크기). Prometheus 보존 15 일 · 25GB(PVC 30Gi). Alertmanager 수신처는 Discord(2026-10-29 연결, 웹훅은 Secret alertmanager-discord)
 - [x] 모니터링 도메인 — `grafana` · `prometheus` · `alertmanager.cafitac.com`. Cloudflare Access 앱 `homelab-monitoring`(정책 `owner`, preview-hub 와 같음)을 **먼저** 만들고 DNS 를 붙였다. 인증 없이 열면 Access 로그인(302)
 - [x] Grafana 는 Access JWT(`Cf-Access-Jwt-Assertion`, 발급자 = 우리 팀)로 바로 로그인 — 따로 계정 없음. admin 폼은 비상용
 - [x] ⚠️ **우회 경로 발견 · 차단**: k3s 기본 Traefik(LoadBalancer + servicelb)이 VM 80/443 에 붙고 lima 가 이를 Mac 의 모든 인터페이스로 넘겨, LAN · tailnet 에서 `Host:` 헤더만으로 Access 없이 Prometheus · Grafana 에 닿았다. Traefik 을 ClusterIP 로 바꿔(`platform/traefik`) Mac:80 리스너가 사라진 것을 확인
@@ -232,7 +232,7 @@ homelab/
 - 남은 colima: k8s(전부) · thread-example 계열(5 단계) · puri(사용자 프로젝트 아님) · earlypay-tests(업무)
 
 - 옮긴 프로젝트의 colima 프로필 · 터널 삭제, 본체 디스크의 `default`(31GB) · preview-hub 디스크 정리(삭제는 사용자 확인 후)
-- 경보 수신처 연결(사용자가 창구를 정하면)
+- ~~경보 수신처 연결~~ → 2026-10-29 Discord 로 연결
 
 ## 5. 위험
 

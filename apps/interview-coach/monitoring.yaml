@@ -113,3 +113,45 @@ spec:
           annotations:
             summary: '{{ $labels.surface }} 음성 인식 오류 {{ $labels.code }} {{ $value | printf "%.0f" }}번(최근 30분)'
 
+        # ── 이상 감시(2026-10-29 사건: #444 배포 뒤 서버 → Umami 사건이 몇 시간 내내 전부 실패, TTS 문장 사이 4~6초 멈춤 — 둘 다 자동으로 못 잡았다) ──
+        # server → Umami 전송 실패(analytics_umami_events_total{result="failed"}). 사건 때는 HTTP/2 업그레이드 오류로 100% 실패 + 매분 WARN (#447 에서 고침)
+        #    위 InterviewCoachJobFailed 와 같은 「새 시계열」 관용구 — 단 두 갈래 모두 > 0 일 때만(homelab#132: 0 으로 등록된 카운터가 새 파드에서 「새 시계열」로 오탐)
+        #    분석 수집이라 사용자 화면에는 영향이 없다 → warning
+        - alert: InterviewCoachUmamiSendFailing
+          expr: |
+            sum (increase(analytics_umami_events_total{namespace="interview-coach", result="failed"}[15m])) > 0
+            or
+            sum ((analytics_umami_events_total{namespace="interview-coach", result="failed"} > 0)
+              unless analytics_umami_events_total{namespace="interview-coach", result="failed"} offset 15m)
+          labels: { severity: warning }
+          annotations:
+            summary: "server 가 Umami 로 사건을 보내지 못하고 있다(최근 15분)"
+            description: "Loki: {namespace=\"interview-coach\", app=\"server\"} |= \"Umami\" 의 WARN 을 본다. UMAMI_ORIGIN(server.yaml) · umami Service · server-egress 정책 · HTTP 클라이언트(2026-10 HTTP/2 업그레이드 사건)를 의심한다"
+        # TTS 문장 기다림 p95 — 첫 문장은 첫 소리까지, 이후 문장은 문장 사이 틈. source="server" 일 때만 기록(기기 대체 음성은 빠진다).
+        #    임계값 3000ms: 사건 때 4000~6000ms 멈춤이 났고, 문장 사이 틈이 3초를 넘으면 듣는 쪽에서 끊긴다고 느낀다 → 사건 값보다 낮게 잡아 일찍 본다.
+        #    표본이 적은 단일 사용자라 p95 가 한두 문장에 좌우된다 — 30분 창 + for 10m 으로 한 문장짜리 튐은 거른다.
+        #    표본이 없으면 histogram_quantile 이 NaN 이라 비교가 거짓이 된다(경보 안 남) — 카운터 「새 시계열」 관용구는 여기 해당하지 않는다
+        #    (참고: 말이 끝난 뒤 첫 답 소리까지의 시간 coach_voice_reply_first_audio_seconds 는 여기서 안 보고 후속으로 따로 본다)
+        - alert: InterviewCoachTtsStallHigh
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(coach_voice_tts_sentence_wait_ms_bucket{namespace="interview-coach"}[30m]))) > 3000
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: 'TTS 문장 기다림 p95 가 {{ $value | printf "%.0f" }}ms (최근 30분, 기준 3000ms)'
+            description: "문장 사이가 끊긴다. surface 별로 나눠 Grafana interview-coach 대시보드에서 보고, modelhost(Mac Studio 8800) 합성 지연 · 부하를 먼저 의심한다"
+        # 트래픽은 있는데 Umami 로 간 사건이 0 — 오늘 사건(100% 실패가 몇 시간 방치)을 가장 직접 잡는 경보. 실패 카운터가 안 늘어나는 고장(전송 코드가 아예 안 돈다 등)도 잡는다
+        #    트래픽 = 화면 요청 수(actuator 지표 수집 · 헬스 확인은 늘 오므로 뺀다). 사용자가 한 명이라 30분에 20건 미만이면 쓰는 중이 아니라고 본다
+        #    result="sent" 시계열은 성공이 한 번도 없으면 아예 안 생긴다 → or vector(0) 으로 「없음」도 0 으로 본다(absent 는 라벨이 달라 and 로 못 잇는다)
+        #    화면 요청이 Umami 사건을 만들지 않는 구간(관리 화면만 폴링 등)에서는 오탐 가능 — for 15m + 30분 창으로 줄였다. 주 목적은 30~60분 안에 알아채는 것
+        - alert: InterviewCoachUmamiSendStalled
+          expr: |
+            sum (increase(http_server_requests_seconds_count{namespace="interview-coach", job="server", uri!~"/actuator.*"}[30m])) >= 20
+            and
+            (sum (increase(analytics_umami_events_total{namespace="interview-coach", result="sent"}[30m])) or vector(0)) == 0
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: "최근 30분 화면 요청은 있는데 Umami 로 간 사건이 0 이다"
+            description: "server → Umami 전송이 통째로 막혔다. result=failed 가 늘면 InterviewCoachUmamiSendFailing 도 함께 뜬다. 아니면 UMAMI_ORIGIN · umami Pod · 사용 기록 끄기 설정(전역 스위치)을 본다"
+        # ⚠️ 알려진 공백: modelhost(Mac Studio launchd, 127.0.0.1:8800)는 Prometheus 가 긁지 않는다(ServiceMonitor 없음 · /metrics 없음) — 끝 잘림 · 음높이 흔들림 감시(D7)는 여기서 다루지 않는다

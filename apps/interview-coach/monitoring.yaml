@@ -114,3 +114,50 @@ spec:
           annotations:
             summary: '{{ $labels.surface }} 음성 인식 오류 {{ $labels.code }} {{ $value | printf "%.0f" }}번(최근 30분)'
 
+        # ── 이상 감시(2026-10-29 사건: #444 배포 뒤 서버 → Umami 사건이 몇 시간 내내 전부 실패, TTS 문장 사이 4~6초 멈춤 — 둘 다 자동으로 못 잡았다) ──
+        # server → Umami 전송 실패(analytics_umami_events_total{result="failed"}). 사건 때는 HTTP/2 업그레이드 오류로 100% 실패 + 매분 WARN (#447 에서 고침)
+        #    위 InterviewCoachJobFailed 와 같은 「새 시계열」 관용구 — 단 두 갈래 모두 > 0 일 때만(homelab#132: 0 으로 등록된 카운터가 새 파드에서 「새 시계열」로 오탐)
+        #    분석 수집이라 사용자 화면에는 영향이 없다 → warning
+        #    for 를 두지 않는 것은 의도다 — 분석용 신호라 지연시키지 않고 실패가 처음 보이는 한 틱에 바로 잡는다
+        - alert: InterviewCoachUmamiSendFailing
+          expr: |
+            sum (increase(analytics_umami_events_total{namespace="interview-coach", result="failed"}[15m])) > 0
+            or
+            sum ((analytics_umami_events_total{namespace="interview-coach", result="failed"} > 0)
+              unless analytics_umami_events_total{namespace="interview-coach", result="failed"} offset 15m)
+          labels: { severity: warning }
+          annotations:
+            summary: "server 가 Umami 로 사건을 보내지 못하고 있다(최근 15분)"
+            description: "Loki: {namespace=\"interview-coach\", app=\"server\"} |= \"Umami\" 의 WARN 을 본다. UMAMI_ORIGIN(server.yaml) · umami Service · server-egress 정책 · HTTP 클라이언트(2026-10 HTTP/2 업그레이드 사건)를 의심한다"
+        # 실패율 — 시도한 전송(sent+failed)의 30% 넘게 실패. 분모가 5건 미만이면 보지 않는다(사용자 한 명이라 사건이 적다)
+        #    분모가 0 이면(시도 자체가 없음) 0/0=NaN 이라 비교가 거짓 → 발화하지 않는다. 즉 「사건이 하나도 안 생기는 완전 침묵」은 이 규칙이 못 잡는다
+        - alert: InterviewCoachUmamiSendFailureRatio
+          expr: |
+            sum (increase(analytics_umami_events_total{namespace="interview-coach", result="failed"}[30m]))
+              / sum (increase(analytics_umami_events_total{namespace="interview-coach", result=~"sent|failed"}[30m])) > 0.3
+            and sum (increase(analytics_umami_events_total{namespace="interview-coach", result=~"sent|failed"}[30m])) >= 5
+          labels: { severity: warning }
+          annotations:
+            summary: "Umami 로 보낸 사건의 {{ $value | humanizePercentage }} 가 실패(최근 30분)"
+            description: "일부만 실패한다 — 간헐 오류 · 타임아웃을 의심한다. Loki: {namespace=\"interview-coach\", app=\"server\"} |= \"Umami\""
+        # 「전송이 통째로 멈춤」(트래픽은 있는데 sent 가 0)을 잡는 InterviewCoachUmamiSendStalled 는 넣지 않았다 — 화면 요청 수(예: /api/notifications 폴링)는 Umami 사건과 무관하고,
+        #    사건(outcomes.emit)은 대부분 비동기 작업에서 나며 serverEvents 런타임 스위치를 끄면 0건이 정상이라 「정상인데 0건」과 구분할 수 없다.
+        #    후속 과제: 서버에 「emit 시도」 카운터(런타임 스위치가 꺼져 건너뛴 경우까지 라벨로 구분)를 두는 것이 제대로 된 해법 — 지금은 없어서 완전 침묵을 Prometheus 만으로 안전하게 못 잡는다
+        # TTS 문장 기다림 p95 — 첫 문장은 첫 소리까지, 이후 문장은 문장 사이 틈. source="server" 일 때만 기록(기기 대체 음성은 빠진다).
+        #    임계값 3000ms: 사건 때 4000~6000ms 멈춤이 났고, 문장 사이 틈이 3초를 넘으면 듣는 쪽에서 끊긴다고 느낀다 → 사건 값보다 낮게 잡아 일찍 본다.
+        #    표본이 적은 단일 사용자라 p95 가 한두 문장에 좌우된다 — 한 문장짜리 튐을 거르는 것은 30분 rate 창 집계(다른 표본에 묻힘)와 최소 표본 10건 가드다.
+        #    for 10m 은 p95 가 잠깐 넘었다가 바로 내려가는 것을 거른다(조건이 10분 내내 참이어야 발화).
+        #    표본이 없으면 histogram_quantile 이 NaN 이라 비교가 거짓이 된다(경보 안 남) — 카운터 「새 시계열」 관용구는 여기 해당하지 않는다
+        #    TODO: 사일블링 유닛 TTS-STALL-RCA 가 coach_voice_tts_sentence_wait_ms 에 wait_phase 라벨(첫 문장 대기 vs 문장 사이 멈춤)을 더할 계획 —
+        #    라벨이 생기면 이 식을 wait_phase="tts"(실제로 쓰는 값)로 좁혀야 더 정확하다. 지금은 라벨이 없어 식은 그대로 둔다
+        #    (참고: 말이 끝난 뒤 첫 답 소리까지의 시간 coach_voice_reply_first_audio_seconds 는 여기서 안 보고 후속으로 따로 본다)
+        - alert: InterviewCoachTtsStallHigh
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(coach_voice_tts_sentence_wait_ms_bucket{namespace="interview-coach"}[30m]))) > 3000
+            and sum (increase(coach_voice_tts_sentence_wait_ms_count{namespace="interview-coach"}[30m])) >= 10
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: 'TTS 문장 기다림 p95 가 {{ $value | printf "%.0f" }}ms (최근 30분, 기준 3000ms)'
+            description: "문장 사이가 끊긴다. surface 별로 나눠 Grafana interview-coach 대시보드에서 보고, modelhost(Mac Studio 8800) 합성 지연 · 부하를 먼저 의심한다"
+        # ⚠️ 알려진 공백: modelhost(Mac Studio launchd, 127.0.0.1:8800)는 Prometheus 가 긁지 않는다(ServiceMonitor 없음 · /metrics 없음) — 끝 잘림 · 음높이 흔들림 감시(D7)는 여기서 다루지 않는다

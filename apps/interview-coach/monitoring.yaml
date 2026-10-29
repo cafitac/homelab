@@ -164,8 +164,8 @@ spec:
               coach_model_latency_seconds{task="tts", stage="queue_wait"}(서버가 modelhost 의 X-Queue-Ms 로 남긴다 — 엔진이 다른 요청으로
               바빴던 시간)이 크면 호스트 대기열(겹치는 대화형 · 선점 경계를 못 만난 미리 만들기)을, 작으면 modelhost(Mac Studio 8800) 합성 자체나
               클라이언트 쪽(iOS PlaybackTimeline 등)을 의심한다.
-        # 글이 늦어 생긴 몫(모델 쪼개 주기 — 지금은 경보 없이 관찰만, 임계값은 운영자 결정 필요) — wait_phase="text" 가 크면 TTS/엔진이 아니라
-        #    코치 턴 LLM 이 늦은 것이라 여기 TtsStallHigh 와는 다른 쪽(LLM 호출 지연)을 봐야 한다.
+        # 글이 늦어 생긴 몫(모델 쪼개 주기) — wait_phase="text" 가 크면 TTS/엔진이 아니라 코치 턴 LLM 이 늦은 것이라 위 TtsStallHigh 와는
+        #    다른 쪽(LLM 호출 지연)을 봐야 한다. 임계값은 TtsStallHigh 와 똑같이 둔다(같은 사용자가 같은 걸 듣는다 — 원인이 다를 뿐).
         - alert: InterviewCoachTtsTextWaitHigh
           expr: |
             histogram_quantile(0.95, sum by (le) (rate(coach_voice_tts_sentence_wait_ms_bucket{namespace="interview-coach", wait_phase="text"}[30m]))) > 3000
@@ -174,6 +174,6 @@ spec:
           labels: { severity: warning }
           annotations:
             summary: 'TTS 문장 기다림(글 쪽) p95 가 {{ $value | printf "%.0f" }}ms (최근 30분, 기준 3000ms)'
-            description: "모델이 다음 문장 글을 늦게 준다 — TTS/엔진이 아니라 코치 턴 LLM 쪽(coach_llm_calls_seconds · modelhost 쪽 혼잡) 을 의심한다."
+            description: "모델이 다음 문장 글을 늦게 준다 — TTS/엔진이 아니라 코치 턴 LLM 쪽(coach_llm_calls_seconds · modelhost 쪽 혼잡)을 의심한다. surface 별로 나눠 Grafana interview-coach 대시보드에서 본다."
         # ⚠️ 알려진 공백: modelhost(Mac Studio launchd, 127.0.0.1:8800)는 Prometheus 가 긁지 않는다(ServiceMonitor 없음 · /metrics 없음) — 끝 잘림 · 음높이 흔들림 감시(D7)는 여기서 다루지 않는다.
         #    대신 서버가 modelhost 응답의 X-Queue-Ms · X-First-Chunk-Ms 를 coach_model_latency_seconds{task="tts", stage="queue_wait"|"first_chunk"} 로 받아 남긴다(TTS-STALL-RCA).

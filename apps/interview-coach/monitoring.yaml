@@ -177,3 +177,42 @@ spec:
             description: "모델이 다음 문장 글을 늦게 준다 — TTS/엔진이 아니라 코치 턴 LLM 쪽(coach_llm_calls_seconds · modelhost 쪽 혼잡)을 의심한다. surface 별로 나눠 Grafana interview-coach 대시보드에서 본다."
         # ⚠️ 알려진 공백: modelhost(Mac Studio launchd, 127.0.0.1:8800)는 Prometheus 가 긁지 않는다(ServiceMonitor 없음 · /metrics 없음) — 끝 잘림 · 음높이 흔들림 감시(D7)는 여기서 다루지 않는다.
         #    대신 서버가 modelhost 응답의 X-Queue-Ms · X-First-Chunk-Ms 를 coach_model_latency_seconds{task="tts", stage="queue_wait"|"first_chunk"} 로 받아 남긴다(TTS-STALL-RCA).
+
+        # ══════════════════════════════════════════════════════════════════════════════════════════════
+        # 미완성 — 서버가 카운터를 내면 이 블록을 켠다. 아래 규칙은 전부 주석이다(켜지지 않은 규칙 — 살아 있는 경보가 아니다).
+        # ══════════════════════════════════════════════════════════════════════════════════════════════
+        # TTS 문장별 음질 사건(interview-coach 서버 PR: AudioQualityCollector → Postgres tts_audio_quality_events)에 새 측정값(F0 음높이 흔들림 %,
+        #    옥타브 점프 수, 유성음 비율, 말 속도, 멈춤 길이)과 저하 사유 코드 pitch_jitter_high 가 더해졌다(modelhost dsp/pitch 가 흔들림이 보정해 둔 임계값을
+        #    넘으면 사건 reasons 에 넣고 degraded=true). 그러나 이 사건은 DB 로만 들어가고, 서버가 /actuator/prometheus 로 내는 Micrometer 카운터는 아직 없다
+        #    → 위 「알려진 공백」이 이 새 신호에도 그대로 적용된다. Prometheus 는 DB 의 reasons 열을 읽지 못하므로 지금은 경보를 만들 수 없다.
+        #    ⚠️ 서버 코드를 이 저장소에서 확인할 수 없어 카운터 이름은 아래처럼 「제안」일 뿐이다 — 서버가 실제로 낸 이름·라벨로 맞춘 뒤에 켠다.
+        #
+        # 서버가 먼저 해야 할 일(카운터 두 개, AudioQualityCollector 가 문장 사건 하나를 받을 때마다):
+        #    coach_audio_quality_sentences_total                — 받은 문장 사건마다 +1 (분모. 저하 여부와 무관하게 센다)
+        #    coach_audio_quality_degraded_total{reason="..."}     — 사건의 reasons 가 비어 있지 않으면 사유 코드마다 +1 (한 문장에 사유가 둘이면 둘 다 오른다)
+        #    reason 값은 dsp.py 의 사유 코드와 같다: clipping · level_jump · dropout · low_snr · audio_too_long · audio_too_short · tail_cut ·
+        #    trim_overrun · trim_too_long · asr_cer · low_mos · (새로) pitch_jitter_high. 라벨 값 집합이 작고 닫혀 있어 카디널리티 걱정은 없다.
+        #    위 「새 시계열」 주의: 시계열이 처음 생길 때 increase() 는 첫 값을 세지 않는다 → reason 코드 전부를 서버 기동 때 0 으로 미리 등록한다.
+        #    미리 등록하면 첫 저하도 0→1 증가로 잡히므로 비율 규칙에 「새 시계열」 갈래를 붙일 필요가 없다(0 등록 카운터에 붙이면 InterviewCoachClientError 오탐을 되풀이한다).
+        #
+        # 켤 규칙의 모양(서버가 카운터를 낸 뒤 주석을 풀고 이름 · 라벨을 맞춘다):
+        #    임계값 0.3 · 최소 표본 10: LlmErrorRate 가 30% · 5건을 고른 것과 같은 근거(사용자 한 명이라 표본이 적고, 한두 건이 비율을 흔든다)다.
+        #    분모는 LLM 호출이 아니라 TTS 문장이고 한 턴에 여러 문장이 나온다 — 그래서 최소 표본은 5 보다 큰 10 으로 잡아 TtsStallHigh 의 10건 가드와 맞춘다.
+        #    30% 는 사유 코드 하나(예: pitch_jitter_high)가 문장 열 개 중 셋 넘게 걸린다는 뜻 — 보정한 기준이 가끔 걸리는 정도(몇 %)는 정상이고,
+        #    이 정도면 합성 엔진·참조 음성·모델 쪽의 체계적 문제다. 사용자 화면이 막히는 사건이 아니라 품질 신호이므로 warning.
+        #    ⚠️ 나눗셈·and 의 두 쪽 라벨이 달라(왼쪽 reason, 오른쪽 없음) 그냥 쓰면 짝이 안 맞아 결과가 빈다 → on() group_left / and on() 이 필요하다.
+        #    분모가 0 이면 NaN 이라 비교가 거짓 → 발화하지 않는다(사건이 하나도 없는 완전 침묵은 이 규칙이 못 잡는다 — UmamiSendFailureRatio 와 같은 한계).
+        #    modelhost 가 pitch 측정을 못 해(무성음뿐인 문장 등) reasons 에 코드를 안 넣는 경우는 분자에서 빠진다 — 분모에는 들어가 비율을 낮춘다.
+        #
+        # - alert: InterviewCoachAudioQualityDegradedRateHigh
+        #   expr: |
+        #     sum by (reason) (increase(coach_audio_quality_degraded_total{namespace="interview-coach"}[1h]))
+        #       / on() group_left sum (increase(coach_audio_quality_sentences_total{namespace="interview-coach"}[1h])) > 0.3
+        #     and on() sum (increase(coach_audio_quality_sentences_total{namespace="interview-coach"}[1h])) >= 10
+        #   labels: { severity: warning }
+        #   annotations:
+        #     summary: 'TTS 문장의 {{ $value | humanizePercentage }} 가 음질 저하 사유 {{ $labels.reason }} 로 걸렸다(최근 1시간)'
+        #     description: >-
+        #       사유 코드별 뜻은 interview-coach 저장소 docs/MONITORING.md 와 modelhost dsp.py. 문장 단위 값은 Postgres tts_audio_quality_events
+        #       (reasons · 음높이 흔들림 · 옥타브 점프 · 유성음 비율 · 말 속도 · 멈춤 길이)에서 사유별 · 시간대별로 본다. 최근 modelhost · 모델 · 참조 음성
+        #       변경이 있었는지 확인한다.

@@ -57,7 +57,7 @@ alertmanager:
         - receiver: discord
           matchers:
             - severity =~ "critical|warning"
-            - alertname =~ "InterviewCoach.*|NodeDataDisk.*|PrometheusStorageNearRetentionSize|PublicSiteDown"
+            - alertname =~ "InterviewCoach.*|NodeDataDisk.*|PrometheusStorageNearRetentionSize|PublicSiteDown|NodeClockNotSynchronising"
         # 우리 앱 namespace 에서 난 차트 기본 경보(CrashLoop · 파드 미준비 등) — 그 밖의 차트 기본 경보는 기본 수신처 null
         - receiver: discord
           matchers:

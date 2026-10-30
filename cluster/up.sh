@@ -89,6 +89,32 @@ open(p, "w").write(s)
 PY
   echo "colima: Docker Hub 캐시($MIRROR) 설정"
 fi
+# ⭐ VM 시계 동기화 — colima VM(Debian)의 systemd-timesyncd 는 기본이 disabled 라 NTP 가 꺼진 채로 뜬다.
+#    System clock synchronized: no 가 되어 Prometheus NodeClockNotSynchronising 이 2026-10-27 부터 울렸다(2026-10-30 확인).
+#    colima.yaml 의 provision 에 적어 VM 이 켜질 때마다 켜고(멱등), 켜져 있는 VM 은 아래(기동 뒤)에서 바로 켠다(재시작 없음).
+#    되돌리기: colima.yaml 의 provision 항목을 지우고(provision: null) VM 에서 `sudo timedatectl set-ntp false`
+NTP_MARK='timedatectl set-ntp true'
+if [ -f "$COLIMA_YAML" ] && ! grep -qF "$NTP_MARK" "$COLIMA_YAML"; then
+  python3 - "$COLIMA_YAML" <<'PY'
+import re, sys
+p = sys.argv[1]
+s = open(p).read()
+block = (
+    "provision:\n"
+    "  - mode: system\n"
+    "    script: |\n"
+    "      systemctl enable --now systemd-timesyncd || true\n"
+    "      timedatectl set-ntp true || true\n"
+)
+# 비어 있는 provision 만 채운다 — 다른 항목이 있으면 합치지 않고 멈춘다
+m = re.search(r"^provision: (null|\[\])$\n", s, re.M)
+if not m:
+    sys.exit("colima.yaml 의 provision: 에 다른 내용이 있다 — 손으로 `timedatectl set-ntp true` 항목(mode: system)을 넣는다")
+s = s[:m.start()] + block + s[m.end():]
+open(p, "w").write(s)
+PY
+  echo "colima: VM 시계 동기화(NTP) provision 설정"
+fi
 if colima status -p "$PROFILE" >/dev/null 2>&1 && { ! grep -qE '^cpu: 16$' "$COLIMA_YAML" \
     || ! grep -qE '^disk: 1000$' "$COLIMA_YAML" \
     || ! colima ssh -p "$PROFILE" -- sudo grep -q '"max-size"' /etc/docker/daemon.json; }; then
@@ -115,6 +141,18 @@ PY
   colima ssh -p "$PROFILE" -- sh -c 'sudo kill -HUP "$(pidof dockerd)"'
   echo "dockerd: Docker Hub 캐시($MIRROR) 적용(SIGHUP)"
 fi
+
+# 켜져 있는 VM 의 시계 동기화도 바로 켠다 — provision 은 다음 기동부터 돌기 때문이다. 재시작 없음
+if [ "$(colima ssh -p "$PROFILE" -- timedatectl show -p NTP --value 2>/dev/null || true)" != yes ]; then
+  colima ssh -p "$PROFILE" -- sudo timedatectl set-ntp true
+  echo "VM: NTP 켬(timedatectl set-ntp true)"
+  # 첫 동기화까지 몇 초~수십 초 걸린다 — 최대 30초 기다려 본다(안 맞아도 실패로 보지 않는다)
+  for _ in 1 2 3 4 5 6; do
+    [ "$(colima ssh -p "$PROFILE" -- timedatectl show -p NTPSynchronized --value 2>/dev/null || true)" = yes ] && break
+    sleep 5
+  done
+fi
+colima ssh -p "$PROFILE" -- timedatectl status | grep -E 'System clock synchronized|NTP service' | sed 's/^ */VM: /'
 
 # ⭐ kubelet static CPU manager — Guaranteed 파드의 정수 코어를 독점시킨다(측정 · 채점이 이웃 부하에 흔들리지 않게).
 #    코어 0-1 은 시스템 · k3s 몫으로 남긴다. ⚠️ k3s 인자(--k3s-arg)는 처음 설치 때만 들어가므로 설정 파일로 둔다.

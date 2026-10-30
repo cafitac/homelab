@@ -1,0 +1,57 @@
+# 국민연금 가입 사업장 내역 월별 보관 — 매달 25·28일 10:00(KST) 공공데이터포털에서 최신 파일을 받아 보관본에 더한다.
+# 보관본: PVC lab 의 sources/nps-workplaces(raw/*.csv.gz + manifest.json). 이미 받은 파일은 건너뛴다.
+# 2026-10-30: Mac Studio launchd(com.cafitac.nps-archive)에서 옮겼다. launchd 프로세스는 macOS TCC 때문에 외장 SSD를
+# 읽지도 쓰지도 못한다(exit 78, 10/25·10/28 실행 실패). SSD 보관본은 2026-08 자료월까지의 읽기 전용 사본으로 남는다.
+# 경로를 SSD 와 같게 마운트하는 이유: PV1 채점이 봉인한 tool/nps.py 가 그 경로를 고정으로 쓴다(코드를 고치면 봉인이 깨진다).
+# 로그는 Job 기록(성공·실패 각 3개)으로만 남는다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nps-archive
+spec:
+  schedule: "0 10 25,28 * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200
+      ttlSecondsAfterFinished: 2592000
+      template:
+        metadata:
+          labels: { app: nps-archive }
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: archive
+              image: startup-lab
+              imagePullPolicy: IfNotPresent
+              args: ["python3", "-u", "lab-v2/tool/nps_archive.py"]
+              env:
+                - { name: TMPDIR, value: /tmp }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: lab, mountPath: /lab }
+                - { name: lab, mountPath: /Volumes/TradingData/sources/nps-workplaces, subPath: sources/nps-workplaces }
+                - { name: tmp, mountPath: /tmp }
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { cpu: "1", memory: 1Gi }
+          volumes:
+            - name: lab
+              persistentVolumeClaim: { claimName: lab }
+            - name: tmp
+              emptyDir: { sizeLimit: 1Gi }

@@ -1,0 +1,13 @@
+# web 500m/512Mi + 백업 500m/256Mi 가 상한 안에 든다. 세 번째 Job 은 쿼터를 먼저 늘린다.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+spec:
+  hard:
+    requests.cpu: 200m
+    requests.memory: 512Mi
+    limits.cpu: "1"
+    limits.memory: 1Gi
+    persistentvolumeclaims: "2"
+    requests.storage: 15Gi

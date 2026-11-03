@@ -1,0 +1,36 @@
+# Access 인증서 URL 만 필요하다. 192.168.5.2·다른 namespace·k8s API 는 막도록 설정한다. 실제 차단은 머지 뒤 probes.sh 로 확인한다.
+# 정책은 합산되므로 기본 거부 위에 web 에 필요한 DNS 와 HTTPS 만 연다.
+# 이 클러스터는 새 Pod 시작 약 50–60 초 뒤 허용 규칙이 생긴다(k3s kube-router, interview-coach 097cbcf).
+# 재시작 직후 첫 Access 인증서 조회는 실패할 수 있어 규칙이 생길 때까지 앱은 503 을 반환한다.
+# /healthz 는 egress 가 필요 없다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-egress
+spec:
+  podSelector:
+    matchLabels: { app: web }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+        - ipBlock:
+            cidr: "::/0"
+            except: ["fc00::/7", "fe80::/10", "::1/128", "64:ff9b::/96"]
+      ports: [{ port: 443, protocol: TCP }]

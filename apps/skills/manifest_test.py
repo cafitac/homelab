@@ -202,3 +202,51 @@ class ManifestTest(unittest.TestCase):
         # then
         for text in texts:
             self.assertIsNone(re.search(forbidden, text))
+
+    def test_web_exposes_internal_port_only_through_the_runner_service(self):
+        # given
+        web = self.web['spec']['containers'][0]
+        internal = self.objects['Service', 'web-internal']['spec']
+        # when
+        ports = {p['containerPort']: p.get('name') for p in web['ports']}
+        # then
+        self.assertEqual(ports, {8000: None, 8001: 'internal'})
+        self.assertEqual(internal['type'], 'ClusterIP')
+        self.assertEqual(internal['selector'], {'app': 'web'})
+        self.assertEqual(internal['ports'], [{'name': 'internal', 'port': 8001, 'targetPort': 'internal'}])
+        self.assertEqual(self.objects['Service', 'web']['spec']['ports'], [{'port': 80, 'targetPort': 8000}])
+        self.assertNotIn('web-internal', json.dumps([d for d in self.docs if d['kind'] == 'Ingress']))
+
+    def test_runner_hmac_is_an_optional_read_only_file_mount_and_nothing_else_secret(self):
+        # given
+        spec = self.web['spec']
+        container = spec['containers'][0]
+        # when
+        secret_volumes = [v for v in spec['volumes'] if 'secret' in v]
+        mounts = {m['name']: m for m in container['volumeMounts']}
+        # then
+        self.assertEqual(secret_volumes, [{'name': 'runner-hmac', 'secret': {'secretName': 'runner-hmac', 'optional': True}}])
+        self.assertEqual(mounts['runner-hmac'], {'name': 'runner-hmac', 'mountPath': '/run/runner-hmac', 'readOnly': True})
+        self.assertEqual(container['envFrom'], [{'secretRef': {'name': 'skills-access'}}])
+        self.assertEqual([e['name'] for e in container['env']], ['SKILLS_DATA_DIR'])
+
+    def test_internal_ingress_policy_opens_8001_only_to_runner_pods(self):
+        # given
+        policy = self.objects['NetworkPolicy', 'web-internal-ingress']['spec']
+        # when
+        rules = policy['ingress']
+        # then
+        self.assertEqual(policy['podSelector'], {'matchLabels': {'app': 'web'}})
+        self.assertEqual(policy['policyTypes'], ['Ingress'])
+        self.assertEqual(rules, [{
+            'from': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'skills-runner'}}, 'podSelector': {'matchLabels': {'app': 'runner'}}}],
+            'ports': [{'port': 8001, 'protocol': 'TCP'}]}])
+
+    def test_web_egress_is_unchanged_by_the_internal_port(self):
+        # given
+        egress_policies = [d['metadata']['name'] for d in self.docs if d['kind'] == 'NetworkPolicy' and 'Egress' in d['spec'].get('policyTypes', [])]
+        # when
+        web_ports = [p['port'] for r in self.objects['NetworkPolicy', 'web-egress']['spec']['egress'] for p in r['ports']]
+        # then
+        self.assertEqual(sorted(egress_policies), ['default-deny-egress', 'web-egress'])
+        self.assertEqual(web_ports, [53, 53, 443])

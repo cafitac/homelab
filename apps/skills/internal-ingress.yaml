@@ -1,0 +1,18 @@
+# S6: 내부 포트 8001 은 skills-runner 의 app: runner 파드에만 연다. 러너 파드는 아직 없다(U23d).
+# 한계(알고 둔다): platform/components/isolation 의 allow-same-namespace · allow-from-traefik · allow-from-monitoring 은 포트를 가리지 않아 같은 namespace 파드 · Traefik 파드 · 모니터링 파드는 8001 에 닿을 수 있다.
+# 그래서 8001 의 모든 경로는 앱이 HMAC 으로 지키고(/metrics 만 서명 없음), Ingress 는 Service web(80→8000)만 가리킨다 — web-internal 은 어느 Ingress 에도 없다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-internal-ingress
+spec:
+  podSelector:
+    matchLabels: { app: web }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: skills-runner }
+          podSelector:
+            matchLabels: { app: runner }
+      ports: [{ port: 8001, protocol: TCP }]

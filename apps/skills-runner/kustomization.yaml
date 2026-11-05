@@ -1,0 +1,8 @@
+# SD-3 규칙 스튜디오 러너의 바탕 — namespace · ServiceAccount · 쿼터 · 네트워크 정책만 있다. 러너 워크로드는 없다(U23d), 나가는 길 장치(프록시)는 U21p 가 더한다.
+# 순서: 이 디렉터리와 apps/skills 의 web-internal 이 main 에 들어간다(Argo 동기화) → owner 가 secrets.sh → 웹 이미지(8001) → U23d(replicas 0).
+# platform/components/isolation 은 붙이지 않는다: allow-from-traefik · allow-same-namespace 가 러너 파드에 외부 입구를 열기 때문이다. 여기서는 기본 거부 하나로 시작한다.
+# Secret(runner-claude · runner-github · runner-hmac)은 git 에 두지 않는다 — secrets.sh 가 만든다. 폐기 절차는 REVOKE.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: skills-runner
+resources: [namespace.yaml, serviceaccount.yaml, quota.yaml, networkpolicy.yaml]

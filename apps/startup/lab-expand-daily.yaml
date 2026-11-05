@@ -10,6 +10,7 @@ metadata:
 spec:
   schedule: "0 2 * * *"
   timeZone: Asia/Seoul
+  suspend: true  # 2026-11-05 연구실 잠정 중단(사용자). 다시 열 때 지운다
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

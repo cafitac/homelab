@@ -1,3 +1,4 @@
+# 2026-11-05 잠정 중단: dashboard replicas 0, lab-expand-daily suspend. PVC lab(조사 기록·NPS 보관본)은 그대로 둔다.
 # startup.cafitac.com — 창업 연구실 읽기 전용 대시보드. 앞단은 Cloudflare Access(GitHub 로그인).
 # 이미지 갱신: 연구실 저장소(cafitac/product-growth-lab)의 main 병합 → Actions(Mac Studio 러너) deploy/ci-deploy.sh 가 두 newTag 를 봇 커밋한다.
 # 데이터: PVC lab — 조사 Job(lab-run)이 쓰고 대시보드가 읽는다(호스트 폴더 마운트 없음).

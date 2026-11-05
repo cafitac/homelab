@@ -9,7 +9,7 @@ kind: Deployment
 metadata:
   name: dashboard
 spec:
-  replicas: 1
+  replicas: 0  # 2026-11-05 연구실 잠정 중단(사용자). 다시 열 때 1
   strategy:
     # RWO PVC 하나를 쓰므로 새 파드를 먼저 띄우지 않는다
     type: Recreate

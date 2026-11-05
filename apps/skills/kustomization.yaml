@@ -4,7 +4,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: skills
-resources: [namespace.yaml, quota.yaml, data.yaml, egress.yaml, web.yaml, backup.yaml]
+resources: [namespace.yaml, quota.yaml, data.yaml, egress.yaml, internal-ingress.yaml, web.yaml, backup.yaml]
 components: [../../platform/components/isolation]
 configMapGenerator:
   - name: backup-script

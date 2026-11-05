@@ -1,0 +1,43 @@
+# S3 · S6: 들어오는 길과 나가는 길을 모두 기본 거부하고, 필요한 것만 연다. 정책은 합산되므로 아래가 전부다.
+#   - DNS (kube-dns 53)
+#   - 러너 → skills 의 web 파드 8001 (짝: apps/skills/internal-ingress.yaml 의 web-internal-ingress)
+# 인터넷 방향(api.anthropic.com · api.github.com · github.com)은 열지 않는다 — U21p 의 프록시가 더한다. 그 전에는 러너가 나갈 곳이 없다(안전한 쪽).
+# 이 클러스터는 새 Pod 시작 약 50–60 초 뒤 허용 규칙이 생긴다(apps/skills/egress.yaml 주석). 실제 차단은 머지 뒤 apps/skills/probes.sh 로 확인한다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runner-to-web-internal
+spec:
+  podSelector:
+    matchLabels: { app: runner }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: skills }
+          podSelector:
+            matchLabels: { app: web }
+      ports: [{ port: 8001, protocol: TCP }]

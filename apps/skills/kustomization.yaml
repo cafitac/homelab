@@ -14,4 +14,4 @@ generatorOptions:
 # 이미지는 레지스트리 없이 태그=커밋으로 가져온다(PLAN.md 3 단계, apps/ppt 와 같다); digest 고정은 쓰지 않는다. 빌드한 image ID 는 머지 전에 PR 에 적는다.
 images:
   - name: skills-dashboard
-    newTag: "016d60c47214"
+    newTag: "64aab73a56aa"

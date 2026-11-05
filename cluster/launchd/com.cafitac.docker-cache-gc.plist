@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  colima k8s 의 Docker 빌드 캐시를 매주 일요일 04:30 비우고 fstrim 한다(cluster/docker-cache-gc.sh). 이미지 · 볼륨은 건드리지 않는다.
+  설치(Mac Studio):
+    cp ~/Project/homelab/cluster/launchd/com.cafitac.docker-cache-gc.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cafitac.docker-cache-gc.plist
+  기록: /Users/cafitac/Library/Logs/docker-cache-gc.log
+  자세한 설치 · 상한 설정: cluster/docker-cache-gc.md
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cafitac.docker-cache-gc</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/cafitac/Project/homelab/cluster/docker-cache-gc.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>0</integer>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/cafitac/Library/Logs/docker-cache-gc.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/cafitac/Library/Logs/docker-cache-gc.log</string>
+</dict>
+</plist>

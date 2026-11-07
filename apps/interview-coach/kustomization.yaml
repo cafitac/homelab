@@ -24,4 +24,4 @@ images:
   - { name: interview-coach-server, newTag: 33d3ae15e1b8 }
   - { name: interview-coach-knowledge, newTag: 33d3ae15e1b8 }
   - { name: interview-coach-embedder, newTag: 33d3ae15e1b8 }
-  - { name: interview-coach-web, newTag: 33d3ae15e1b8 }
+  - { name: interview-coach-web, newTag: bba3e1d1e16b }

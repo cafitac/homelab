@@ -82,7 +82,7 @@ spec:
         # 사용자가 한 명이라 호출이 적다 — 최소 5건일 때만 비율을 본다
         - alert: InterviewCoachLlmErrorRate
           expr: |
-            sum by (skill) (increase(coach_llm_calls_seconds_count{namespace="interview-coach", outcome!="ok"}[1h]))
+            sum by (skill) (increase(coach_llm_calls_seconds_count{namespace="interview-coach", outcome!~"ok|cancelled"}[1h]))
               / sum by (skill) (increase(coach_llm_calls_seconds_count{namespace="interview-coach"}[1h])) > 0.3
             and sum by (skill) (increase(coach_llm_calls_seconds_count{namespace="interview-coach"}[1h])) >= 5
           labels: { severity: warning }

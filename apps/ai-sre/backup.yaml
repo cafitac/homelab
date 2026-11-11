@@ -1,0 +1,66 @@
+# 매일 04:40(서울) DB 를 떠 두고 14 일치만 남긴다(judge-board 와 같은 보존). 다른 백업과 시각이 겹치지 않게 했다(04:00 · 04:30 · 04:50, offload 05:00).
+# 되살리기(소유자): kubectl -n ai-sre exec -i db-0 -- pg_restore -U <POSTGRES_USER> -d <POSTGRES_DB> --clean --if-exists < <파일>
+# VM 밖 사본: cluster/backup-offload.sh 의 TARGETS 에 ai-sre 를 더해야 내장 디스크로 복사된다(이 PR 범위 밖 — 소유자 결정 전까지 VM 안에만 있다).
+# 비밀값은 db 와 같은 Secret ai-sre-db 를 이름으로만 가리킨다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backups
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path-retain
+  resources: { requests: { storage: 5Gi } }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: "40 4 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        # networkpolicy.yaml 의 backup-egress · db-ingress 가 이 라벨로 길을 연다
+        metadata:
+          labels: { app: backup }
+        spec:
+          restartPolicy: OnFailure
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          securityContext:
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: backup
+              image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  f=/backups/ai-sre-$(date +%Y%m%d-%H%M%S).dump
+                  pg_dump -Fc -f "$f.part"
+                  # 목차를 읽어 온전한지 확인한 뒤에야 이름을 붙인다 — 깨진 파일이 최신 백업 행세를 하지 않게
+                  pg_restore --list "$f.part" > /dev/null
+                  mv "$f.part" "$f"
+                  find /backups -name 'ai-sre-*.dump' -mtime +14 -delete
+                  find /backups -name '*.part' -mmin +60 -delete
+                  echo "백업 $f ($(du -h "$f" | cut -f1))"
+              env:
+                - { name: PGHOST, value: db }
+                - { name: PGDATABASE, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_DB } } }
+                - { name: PGUSER, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_USER } } }
+                - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_PASSWORD } } }
+                - { name: TZ, value: Asia/Seoul }
+              volumeMounts:
+                - { name: backups, mountPath: /backups }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { cpu: 500m, memory: 256Mi }
+          volumes:
+            - name: backups
+              persistentVolumeClaim: { claimName: backups }

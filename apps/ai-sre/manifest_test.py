@@ -1,11 +1,14 @@
 # 렌더된 매니페스트가 격리 약속을 지키는지 본다(클러스터에 닿지 않는다). 실행: python3 -m unittest apps/ai-sre/manifest_test.py
-# NetworkPolicy 는 쿠버네티스 의미 그대로 모형화한다: 정책은 합산(더하기만), ports 생략 = 모든 포트, to/from 생략 · 빈 peer = 모든 상대.
+# NetworkPolicy 는 쿠버네티스 의미 그대로 모형화한다: 정책은 합산(더하기만), ports 생략 · port 없는 항목 = 모든 포트, to/from 생략 · 빈 peer = 모든 상대.
 import copy
+import os
 import ipaddress
 import json
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,7 +53,14 @@ def peer_match(peer, other):
 
 def port_match(rule, port, proto):
     ports = rule.get('ports')
-    return not ports or any(p.get('port') == port and p.get('protocol', 'TCP') == proto for p in ports)  # ports 생략 = 모든 포트
+    if not ports:  # ports 생략 = 모든 포트
+        return True
+    for p in ports:  # port 없는 항목({} · {protocol: TCP}) = 그 프로토콜의 모든 포트, protocol 생략 = TCP
+        if p.get('protocol', 'TCP') != proto:
+            continue
+        if 'port' not in p or p['port'] == port or (p.get('endPort') and p['port'] <= port <= p['endPort']):
+            return True
+    return False
 
 
 def allowed(docs, direction, me, other, port, proto='TCP'):
@@ -118,6 +128,8 @@ class ManifestTest(unittest.TestCase):
             for key, side in (('ingress', 'from'), ('egress', 'to')):
                 for rule in p['spec'].get(key) or []:
                     self.assertTrue(rule.get(side) and all(rule[side]), f'{name}: 모든 상대를 여는 규칙')
+                    if 'ports' in rule:
+                        self.assertTrue(rule['ports'] and all('port' in x for x in rule['ports']), f'{name}: 모든 포트를 여는 항목')
 
     def test_evaluator_sees_an_opened_default_deny(self):
         # 시험이 정말 「열린 기본 거부」를 잡는지: 기본 거부에 빈 규칙을 넣으면 sandbox 가 10.0.0.1:22 로 나가게 되어야 한다
@@ -127,6 +139,21 @@ class ManifestTest(unittest.TestCase):
         self.assertTrue(self.eg('sandbox', ('ip', '10.0.0.1'), 22, docs=opened))
         self.assertTrue(self.ing('db', pod('sandbox'), 5432, docs=opened))
         self.assertFalse(self.eg('sandbox', ('ip', '10.0.0.1'), 22))
+
+    def test_evaluator_sees_wildcard_port_entries(self):
+        # sandbox 에 「아무 곳 · 모든 포트」 정책이 더해지면(합산) 새어 나가야 한다 — port 없는 항목은 모든 포트다
+        for ports in ([{}], [{'protocol': 'TCP'}]):
+            opened = copy.deepcopy(self.docs)
+            sb = next(d for d in opened if d['kind'] == 'NetworkPolicy' and d['metadata']['name'] == 'sandbox-egress')
+            sb['spec']['egress'] = [{'to': [{'ipBlock': {'cidr': '0.0.0.0/0'}}], 'ports': ports}]
+            self.assertTrue(self.eg('sandbox', ('ip', '10.0.0.1'), 22, docs=opened), ports)
+            self.assertTrue(self.eg('sandbox', ('ip', '8.8.8.8'), 443, docs=opened), ports)
+        udp = copy.deepcopy(self.docs)
+        sb = next(d for d in udp if d['kind'] == 'NetworkPolicy' and d['metadata']['name'] == 'sandbox-egress')
+        sb['spec']['egress'] = [{'to': [{'ipBlock': {'cidr': '0.0.0.0/0'}}], 'ports': [{'protocol': 'UDP'}]}]
+        self.assertTrue(self.eg('sandbox', ('ip', '8.8.8.8'), 53, 'UDP', docs=udp))
+        self.assertFalse(self.eg('sandbox', ('ip', '8.8.8.8'), 443, docs=udp))
+        self.assertFalse(self.eg('sandbox', ('ip', '8.8.8.8'), 443))
 
     def test_sandbox_reaches_only_anthropic_on_443_and_has_no_dns(self):
         ip = lambda a: ('ip', a)
@@ -203,9 +230,68 @@ class ManifestTest(unittest.TestCase):
         script = c['command'][2]
         self.assertIn('PGCONNECT_TIMEOUT', {e['name'] for e in c['env']})
         # 순서: 옛 .part 치우기 → trap → 시간 제한 있는 dump → 끝까지 읽어 검증 → rename → 보존 정리
-        order = ['rm -f /backups/*.part', "trap 'rm -f", '--lock-wait-timeout=', 'pg_restore -f /dev/null', 'mv "$f.part"', '-mtime +14 -delete']
-        self.assertEqual([script.index(s) for s in order], sorted(script.index(s) for s in order))
+        order = ['rm -f /backups/*.part', "trap 'rm -f", '\nprune\n', '--lock-wait-timeout=', 'pg_restore -f /dev/null', 'mv "$f.part"']
+        pos = [script.index(x) for x in order]
+        self.assertEqual(pos, sorted(pos))
+        self.assertEqual(script.count('\nprune\n'), 2)  # 덤프 전 · 뒤
         self.assertNotIn('--list', script)
+
+    # --- 백업 스크립트 실행: 가짜 pg_dump(용량 한도가 있어 차면 ENOSPC) · pg_restore 로 렌더된 스크립트를 임시 디렉터리에서 돌린다 ---
+    FAKE_PG_DUMP = '''#!/bin/sh
+for a; do out=$a; done
+[ -z "$FAKE_FAIL" ] || { echo "pg_dump: error: connection failed" >&2; exit 1; }
+used=$(cat "$BK"/ai-sre-*.dump "$BK"/*.part 2>/dev/null | wc -c)
+[ $((used + 100)) -le "$CAP" ] || { echo "pg_dump: error: could not write: No space left on device" >&2; exit 1; }
+head -c 100 /dev/zero > "$out"
+'''
+
+    def run_backup(self, files, cap, fail=False, drop_prune=False):
+        """files: {이름: (바이트, 며칠 전)}. 가짜 도구로 렌더된 백업 스크립트를 돌려 (종료코드, 남은 파일) 를 돌려준다."""
+        cron = next(d for d in self.docs if d['kind'] == 'CronJob')
+        script = cron['spec']['jobTemplate']['spec']['template']['spec']['containers'][0]['command'][2]
+        if drop_prune:
+            script = script.replace('\nprune\n', '\n:\n', 1)  # 덤프 전 정리만 뺀다
+        with tempfile.TemporaryDirectory() as tmp:
+            bk, bin_ = Path(tmp, 'bk'), Path(tmp, 'bin')
+            bk.mkdir(), bin_.mkdir()
+            for name, (size, days) in files.items():
+                f = bk / name
+                f.write_bytes(b'x' * size)
+                t = time.time() - days * 86400
+                os.utime(f, (t, t))
+            (bin_ / 'pg_dump').write_text(self.FAKE_PG_DUMP)
+            (bin_ / 'pg_restore').write_text('#!/bin/sh\nexit 0\n')
+            for tool in bin_.iterdir():
+                tool.chmod(0o755)
+            env = {**os.environ, 'PATH': f'{bin_}:{os.environ["PATH"]}', 'BK': str(bk), 'CAP': str(cap), **({'FAKE_FAIL': '1'} if fail else {})}
+            r = subprocess.run(['sh', '-c', script.replace('/backups', str(bk))], env=env, text=True, capture_output=True)
+            return r.returncode, sorted(p.name for p in bk.iterdir())
+
+    def test_full_disk_recovers_by_pruning_before_dump(self):
+        # 디스크가 찼다(합 1000 = 한도). 30 일 · 20 일 된 완성본이 자리를 차지한다.
+        full = {'ai-sre-old30.dump': (450, 30), 'ai-sre-old20.dump': (450, 20), 'ai-sre-fresh.dump': (100, 1)}
+        rc, left = self.run_backup(full, cap=1000)
+        self.assertEqual(rc, 0)
+        self.assertIn('ai-sre-fresh.dump', left)
+        self.assertEqual([n for n in left if 'old' in n], [])  # 기간 지난 것은 덤프 전에 회수됐다
+        self.assertEqual(len(left), 2)  # fresh + 이번 새 덤프
+        # 덤프 전 정리가 없으면 같은 상황에서 ENOSPC 로 실패한다(회귀 시험)
+        rc, left = self.run_backup(full, cap=1000, drop_prune=True)
+        self.assertNotEqual(rc, 0)
+
+    def test_newest_backup_is_kept_even_when_older_than_the_window_and_dump_fails(self):
+        files = {'ai-sre-old30.dump': (450, 30), 'ai-sre-old20.dump': (450, 20)}
+        rc, left = self.run_backup(files, cap=1000, fail=True)
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(left, ['ai-sre-old20.dump'])  # 가장 최근 완성본은 남고, 더 오래된 것만 회수
+        # 다음 실행(디스크 여유가 생김)은 성공하고, 새 백업이 생기면 기간 지난 옛것은 정리된다
+        rc, left = self.run_backup({'ai-sre-old20.dump': (450, 20)}, cap=1000)
+        self.assertEqual((rc, len(left)), (0, 1))
+        self.assertNotIn('ai-sre-old20.dump', left)
+
+    def test_only_backup_survives_age_and_stale_part_is_removed(self):
+        rc, left = self.run_backup({'ai-sre-only.dump': (10, 90), 'ai-sre-x.dump.part': (900, 0)}, cap=1000, fail=True)
+        self.assertEqual((rc, left), (1, ['ai-sre-only.dump']))
 
     def test_backup_schedule_is_unique_among_apps(self):
         mine = next(d for d in self.docs if d['kind'] == 'CronJob')['spec']['schedule']

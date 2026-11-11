@@ -51,15 +51,22 @@ spec:
                 - |
                   set -eu
                   f=/backups/ai-sre-$(date +%Y%m%d-%H%M%S).dump
+                  # 보존 정리: 기간(14 일)이 지난 완성본을 지우되 가장 최근 완성본은 기간이 지나도 남긴다.
+                  # 완성본 이름은 검증을 마친 뒤에만 붙으므로 이름 있는 파일은 모두 검증된 백업이다.
+                  prune() {
+                    newest=$(ls -1t /backups/ai-sre-*.dump 2>/dev/null | head -n 1 || true)
+                    find /backups -name 'ai-sre-*.dump' -mtime +14 ! -path "$newest" -delete
+                  }
                   # 이전 실행이 죽으며 남긴 미완성 파일을 먼저 치운다. 이번 실행이 실패해도 자기 .part 는 남기지 않는다
                   rm -f /backups/*.part
                   trap 'rm -f "$f.part"' EXIT
+                  # 덤프 전에도 정리한다 — 디스크가 차서 덤프가 실패하는 상태에서 정리가 덤프 뒤에만 돌면 영영 회복하지 못한다
+                  prune
                   pg_dump -Fc --lock-wait-timeout=60s -f "$f.part"
                   # 데이터 블록까지 끝까지 읽어 온전한지 확인한 뒤에야 이름을 붙인다(목차만 보지 않는다) — 깨진 파일이 최신 백업 행세를 하지 않게
                   pg_restore -f /dev/null "$f.part"
                   mv "$f.part" "$f"
-                  # 보존 정리는 새 백업이 이름을 얻은 뒤에만 돈다(위에서 실패하면 여기까지 오지 않는다) — 마지막 정상 백업은 지워지지 않는다
-                  find /backups -name 'ai-sre-*.dump' -mtime +14 -delete
+                  prune
                   echo "백업 $f ($(du -h "$f" | cut -f1))"
               env:
                 - { name: PGHOST, value: db }

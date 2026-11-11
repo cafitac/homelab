@@ -112,7 +112,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (skill, outcome) (increase(coach_llm_calls_seconds_count{namespace=\"interview-coach\", outcome!=\"ok\"}[1h])) > 0",
+          "expr": "sum by (skill, outcome) (increase(coach_llm_calls_seconds_count{namespace=\"interview-coach\", outcome!~\"ok|cancelled\"}[1h])) > 0",
           "legendFormat": "{{skill}} · {{outcome}}"
         }
       ]

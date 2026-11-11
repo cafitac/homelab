@@ -4,7 +4,7 @@
 
 ## 왜 이 순서인가
 
-- 구독 토큰 값 하나를 네 서비스가 같이 쓴다(interview-coach · trading · ai-daily · skills 러너). 토큰을 폐기하면 네 곳이 한꺼번에 멈추므로, 새 값을 만든 뒤 사용자에게 보이는 서비스부터 되살린다.
+- 구독 토큰 값 하나를 세 서비스가 같이 쓴다(interview-coach · trading · skills 러너, ai-daily 는 2026-11-11 제거). 토큰을 폐기하면 세 곳이 한꺼번에 멈추므로, 새 값을 만든 뒤 사용자에게 보이는 서비스부터 되살린다.
 - 토큰 단위 폐기 방법이 있는지는 게이트 증명 3(U19s)이 확인한다. 증명이 끝나기 전에는 이 절차를 실제 폐기에 쓰지 않고, 아래 7 번의 모의 훈련으로만 돌린다.
 - 값은 어느 단계에서도 화면 · 저장소 · 명령줄에 남기지 않는다. 새 값은 SSD 의 서비스별 env 파일에만 둔다(0600).
 
@@ -17,12 +17,11 @@
      - `kubectl -n argocd patch app skills-runner --type merge -p '{"spec":{"syncPolicy":null}}'`
    - `kubectl -n skills-runner scale deploy/runner --replicas=0`
 2. 새 토큰을 만든다 — owner 기기에서 `claude setup-token`. 발급일을 기록한다.
-3. 옛 토큰을 증명 3 에서 확인한 방법으로 폐기한다(토큰 단위 방법이 없으면 계정 전체 로그아웃뿐이며, 이는 네 서비스와 owner 의 대화형 로그인을 모두 멈추는 비상 수단이다).
+3. 옛 토큰을 증명 3 에서 확인한 방법으로 폐기한다(토큰 단위 방법이 없으면 계정 전체 로그아웃뿐이며, 이는 세 서비스와 owner 의 대화형 로그인을 모두 멈추는 비상 수단이다).
 4. 새 값을 서비스별 env 파일에 쓰고, 아래 순서대로 각 `secrets.sh` 를 다시 실행한다. 사용자에게 보이는 서비스를 먼저 되살린다.
    1. interview-coach — `apps/interview-coach/secrets.sh`, 이어서 `kubectl -n interview-coach rollout restart deploy/server`
    2. trading — `apps/trading/secrets.sh`(다음 Job 부터 새 값을 읽는다)
-   3. ai-daily — `apps/ai-daily/secrets.sh`(다음 CronJob 부터 새 값을 읽는다)
-   4. skills 러너 — `apps/skills-runner/secrets.sh`(env 파일의 `CLAUDE_CODE_OAUTH_TOKEN` 과 `ISSUED` 를 새 값으로 바꾼 뒤)
+   3. skills 러너 — `apps/skills-runner/secrets.sh`(env 파일의 `CLAUDE_CODE_OAUTH_TOKEN` 과 `ISSUED` 를 새 값으로 바꾼 뒤)
 5. 서비스마다 모델 호출 한 번 또는 생존 게이지로 확인한다. 이 확인을 위해 다른 서비스에 추가 호출을 만들지 않는다.
 6. GitHub 세분화된 PAT 도 폐기한다 — GitHub 설정 → Developer settings → Fine-grained tokens 에서 삭제한다. 같은 범위(저장소 두 개, Contents · Pull requests 쓰기, Metadata 읽기, 90 일)로 새로 발급해 env 파일의 `GH_TOKEN` 을 바꾸고 `apps/skills-runner/secrets.sh` 를 다시 실행한다.
 7. 날짜 · 방법 · 확인한 서비스를 상위 control record 에 적는다. `studio.revocation.verified_at` 은 throwaway 토큰으로 위 절차를 끝까지 돌린 훈련이 성공했을 때에만 설정한다.

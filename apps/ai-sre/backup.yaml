@@ -1,4 +1,5 @@
-# 매일 04:40(서울) DB 를 떠 두고 14 일치만 남긴다(judge-board 와 같은 보존). 다른 백업과 시각이 겹치지 않게 했다(04:00 · 04:30 · 04:50, offload 05:00).
+# 매일 04:20(서울) DB 를 떠 두고 14 일치만 남긴다(judge-board 와 같은 보존). 다른 백업과 분이 겹치지 않는다
+# (기존 04:00 · 04:15 · 04:30 · 04:40 ppt · 04:50, offload 05:00 — 2026-11-12 apps/ 의 schedule 전부 확인).
 # 되살리기(소유자): kubectl -n ai-sre exec -i db-0 -- pg_restore -U <POSTGRES_USER> -d <POSTGRES_DB> --clean --if-exists < <파일>
 # VM 밖 사본: cluster/backup-offload.sh 의 TARGETS 에 ai-sre 를 더해야 내장 디스크로 복사된다(이 PR 범위 밖 — 소유자 결정 전까지 VM 안에만 있다).
 # 비밀값은 db 와 같은 Secret ai-sre-db 를 이름으로만 가리킨다.
@@ -16,7 +17,7 @@ kind: CronJob
 metadata:
   name: backup
 spec:
-  schedule: "40 4 * * *"
+  schedule: "20 4 * * *"
   timeZone: Asia/Seoul
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
@@ -24,6 +25,8 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
+      # 멈춘 Job 하나가 Forbid 때문에 뒤 실행을 모두 막지 않게 전체 시간에 상한을 둔다. 30 분은 어림값(DB 가 작다) — 실제 소요를 보고 조정한다
+      activeDeadlineSeconds: 1800
       template:
         # networkpolicy.yaml 의 backup-egress · db-ingress 가 이 라벨로 길을 연다
         metadata:
@@ -32,7 +35,12 @@ spec:
           restartPolicy: OnFailure
           enableServiceLinks: false
           automountServiceAccountToken: false
+          # postgres:16-alpine 의 postgres 계정(uid · gid 70). 데이터 쓰기는 PVC 만
           securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
             seccompProfile: { type: RuntimeDefault }
           containers:
             - name: backup
@@ -43,12 +51,15 @@ spec:
                 - |
                   set -eu
                   f=/backups/ai-sre-$(date +%Y%m%d-%H%M%S).dump
-                  pg_dump -Fc -f "$f.part"
-                  # 목차를 읽어 온전한지 확인한 뒤에야 이름을 붙인다 — 깨진 파일이 최신 백업 행세를 하지 않게
-                  pg_restore --list "$f.part" > /dev/null
+                  # 이전 실행이 죽으며 남긴 미완성 파일을 먼저 치운다. 이번 실행이 실패해도 자기 .part 는 남기지 않는다
+                  rm -f /backups/*.part
+                  trap 'rm -f "$f.part"' EXIT
+                  pg_dump -Fc --lock-wait-timeout=60s -f "$f.part"
+                  # 데이터 블록까지 끝까지 읽어 온전한지 확인한 뒤에야 이름을 붙인다(목차만 보지 않는다) — 깨진 파일이 최신 백업 행세를 하지 않게
+                  pg_restore -f /dev/null "$f.part"
                   mv "$f.part" "$f"
+                  # 보존 정리는 새 백업이 이름을 얻은 뒤에만 돈다(위에서 실패하면 여기까지 오지 않는다) — 마지막 정상 백업은 지워지지 않는다
                   find /backups -name 'ai-sre-*.dump' -mtime +14 -delete
-                  find /backups -name '*.part' -mmin +60 -delete
                   echo "백업 $f ($(du -h "$f" | cut -f1))"
               env:
                 - { name: PGHOST, value: db }
@@ -56,6 +67,10 @@ spec:
                 - { name: PGUSER, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_USER } } }
                 - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_PASSWORD } } }
                 - { name: TZ, value: Asia/Seoul }
+                - { name: PGCONNECT_TIMEOUT, value: "30" }
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: { drop: [ALL] }
               volumeMounts:
                 - { name: backups, mountPath: /backups }
               resources:

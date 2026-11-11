@@ -17,7 +17,12 @@ spec:
     spec:
       enableServiceLinks: false
       automountServiceAccountToken: false
+      # postgres:16-alpine 의 postgres 계정(uid · gid 70)으로 바로 뜬다 — 루트로 시작해 chown 하지 않는다. PV 디렉터리는 local-path 가 0777 로 만든다
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: postgres
@@ -27,6 +32,9 @@ spec:
             - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_PASSWORD } } }
             - { name: POSTGRES_DB, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_DB } } }
             - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
           ports: [{ containerPort: 5432 }]
           readinessProbe:
             exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }

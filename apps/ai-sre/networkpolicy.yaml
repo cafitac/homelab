@@ -4,7 +4,7 @@
 #   backup  → db (5432)
 #   api     ← monitoring 의 Alertmanager(웹훅) · Prometheus(지표) (8080).  → db
 #   worker  → db · sandbox · monitoring(9090 Prometheus · 9093 Alertmanager · 3100 Loki) · 인터넷 HTTPS(GitHub · Discord · 결재함의 Cloudflare)
-#   sandbox ← worker 만.  → Anthropic 대역 HTTPS 뿐 — DB · k8s · 다른 파드 · 사설 대역 모두 닿지 않는다
+#   sandbox ← worker 만.  → Anthropic 대역 HTTPS 뿐, DNS 도 없다 — DB · k8s · 다른 파드 · 사설 대역 모두 닿지 않는다
 # 이 정책 세트가 열지 않은 것(뒤 단위가 자기 정책을 이 파일에 더한다): k8s API(Argo 읽기 Role 과 함께), scorer · sweep 의 DB 길,
 #   worker 의 지표 포트(B9a), 관리 화면 Ingress(B7b). 지금 열려 있지 않은 길은 닫혀 있는 쪽이 안전한 쪽이다.
 # 이 클러스터는 새 Pod 시작 약 50–60 초 뒤 허용 규칙이 생긴다(apps/skills/egress.yaml 주석) — 재시작 직후 잠깐은 연결이 실패할 수 있다.
@@ -21,8 +21,12 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-dns
+  # ⚠️ sandbox 는 일부러 뺐다 — 모델이 읽는 입력에 심긴 지시가 이름 조회(<비밀>.공격자.도메인)로 데이터를 밖에 내보내는 길을 닫는다.
+  # 그래서 A10b 의 sandbox 파드는 hostAliases 로 api.anthropic.com(과 쓰는 호스트)을 위 Anthropic 대역의 주소에 직접 박아야 한다(A10b 의무).
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: NotIn, values: [sandbox] }
   policyTypes: [Egress]
   egress:
     - to:

@@ -8,7 +8,7 @@ kind: Deployment
 metadata:
   name: web
 spec:
-  replicas: 1
+  replicas: 0  # 2026-11-11 소유자: 더 이상 쓰지 않음 — 멈춰 둔다(데이터는 남김). 다시 켜려면 1 로.
   selector:
     matchLabels: { app: web }
   template:

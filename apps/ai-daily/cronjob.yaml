@@ -7,6 +7,8 @@ kind: CronJob
 metadata:
   name: daily
 spec:
+  # 2026-11-11 소유자: 더 이상 쓰지 않음 — 멈춰 둔다. 데이터(PVC)는 남긴다. 다시 켜려면 false 로.
+  suspend: true
   schedule: "0 7 * * *"
   timeZone: Asia/Seoul
   concurrencyPolicy: Forbid

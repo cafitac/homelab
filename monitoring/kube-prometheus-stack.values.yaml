@@ -62,7 +62,7 @@ alertmanager:
         - receiver: discord
           matchers:
             - severity =~ "critical|warning"
-            - namespace =~ "interview-coach|judge-board|ai-daily|portfolio|ppt|trading|startup|preview-hub"
+            - namespace =~ "interview-coach|judge-board|portfolio|ppt|trading|startup|preview-hub"
     receivers:
       - name: "null"
       - name: discord

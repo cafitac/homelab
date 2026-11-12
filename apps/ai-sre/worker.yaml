@@ -1,11 +1,11 @@
-# worker — 작업 큐(DIAGNOSE · SWEEP · CHECK_RESOLVE)를 돌리고 /metrics 를 8080 에서 내보낸다. 이미지는 api 와 같고 명령만 다르다.
+# worker — 작업 큐(DIAGNOSE · SWEEP · CHECK_RESOLVE · DEPLOY_OBSERVE)를 돌리고 /metrics 를 8080 에서 내보낸다. 이미지는 api 와 같고 명령만 다르다.
 # 비밀을 쥔 쪽은 이 파드다(DB · Discord 웹훅). 모델은 여기서 돌지 않는다 — 진단은 sandbox Service(http://sandbox.ai-sre.svc:8080)에 맡긴다(설계 07 §6).
 # 효과 flag 는 DB 에서 기본 OFF 다. 봉쇄(containment)는 replicas 를 0 으로 내리는 것(소유자).
 # k8s API 는 DEPLOY_OBSERVE(Argo CD Application 읽기, deploy_observe_enabled DB flag · 기본 OFF)만 쓴다 — 이 파드에만 토큰이 있다.
 #   serviceAccountName ai-sre-reader(argocd 의 applications get · list · watch 뿐, rbac.yaml). 파드 수준 automount 는 그대로 끄고,
 #   표준 경로 /var/run/secrets/kubernetes.io/serviceaccount 에 projected 볼륨(1 시간 토큰 · kube-root-ca.crt)을 worker 컨테이너에만 읽기 전용으로 건다.
 #   길은 networkpolicy.yaml 의 worker-kube-api-egress. api · sandbox · db · backup 은 토큰도 길도 없다.
-# /metrics 의 들어오는 길은 아직 열지 않았다(networkpolicy.yaml — B9a 가 monitoring 의 Prometheus 에서만 연다). Ingress 는 없다.
+# /metrics 의 들어오는 길은 monitoring 의 Prometheus 에서만 열려 있다(networkpolicy.yaml 의 worker-ingress, B9b). Ingress 는 없다.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

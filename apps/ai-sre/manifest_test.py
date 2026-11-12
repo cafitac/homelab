@@ -217,6 +217,14 @@ class ManifestTest(unittest.TestCase):
         self.assertFalse(self.ing('api', pod('worker'), 8080))
         self.assertFalse(self.ing('api', ('pod', mon, {'app.kubernetes.io/name': 'alertmanager'}), 9999))
 
+    def test_worker_takes_only_prometheus_on_the_metrics_port(self):
+        mon = {'kubernetes.io/metadata.name': 'monitoring'}
+        self.assertTrue(self.ing('worker', ('pod', mon, {'app.kubernetes.io/name': 'prometheus'}), 8080))  # B9b: PodMonitor 수집
+        self.assertFalse(self.ing('worker', ('pod', mon, {'app.kubernetes.io/name': 'prometheus'}), 9999))
+        for other in (('pod', mon, {'app.kubernetes.io/name': 'alertmanager'}), ('pod', mon, {'app.kubernetes.io/name': 'grafana'}),
+                      ('pod', {'kubernetes.io/metadata.name': 'traefik'}, {'app.kubernetes.io/name': 'prometheus'}), pod('api'), pod('sandbox')):
+            self.assertFalse(self.ing('worker', other, 8080), other)
+
     def test_worker_egress(self):
         mon = {'kubernetes.io/metadata.name': 'monitoring'}
         for port in (9090, 9093, 3100):

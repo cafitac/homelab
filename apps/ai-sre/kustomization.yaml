@@ -30,6 +30,6 @@ resources:
 #   ai-sre-sandbox = docker/sandbox/Dockerfile (docker/sandbox.Dockerfile 이 아니다 — 그것은 CLI 만 든 옛 이미지)
 images:
   - name: ai-sre
-    newTag: "9f38b3995c9b"
+    newTag: "854c554a50df"  # #39 (kube API 전송 · DEPLOY_OBSERVE). sandbox 는 바뀌지 않아 그대로
   - name: ai-sre-sandbox
     newTag: "9f38b3995c9b"

@@ -50,6 +50,16 @@ alertmanager:
       group_interval: 5m
       repeat_interval: 12h
       routes:
+        # ⭐ ai-sre(설계 07 §13) — 맨 앞 + continue: true 라 경보의 사본만 받고, 아래 경로(Discord 포함)는 이 경로가 없을 때와 똑같이 고른다.
+        #    받는 범위: critical · warning 전부(대상 판별은 ai-sre 가 한다 — 대상 밖이면 감사 기록만 남긴다).
+        #    빼는 것: 하트비트 · 억제용, ai-sre 자신의 경보(AiSre.* · namespace ai-sre — 자기 장애를 자기에게 보내는 고리를 막는다)
+        #    검사: monitoring/alertmanager_test.py(CI .github/workflows/amtool.yml)
+        - receiver: ai-sre
+          continue: true
+          matchers:
+            - severity =~ "critical|warning"
+            - alertname !~ "AiSre.*|Watchdog|InfoInhibitor"
+            - namespace != "ai-sre"
         # 하트비트 · 차트의 억제용 경보는 어디로도 보내지 않는다
         - receiver: "null"
           matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
@@ -79,6 +89,17 @@ alertmanager:
               {{ end -}}
               시작 {{ .StartsAt | tz "Asia/Seoul" | date "2006-01-02 15:04:05" }} KST{{ if eq .Status "resolved" }} · 해소 {{ .EndsAt | tz "Asia/Seoul" | date "2006-01-02 15:04:05" }} KST{{ end }}
               {{ end }}
+      # ai-sre api 의 웹훅(apps/ai-sre/api.yaml). 토큰은 api 가 읽는 Secret ai-sre/ai-sre-alertmanager 와 같은 값 —
+      # monitoring 의 Secret ai-sre-alertmanager-token(키 token)으로 소유자가 복사한다. 파일은 요청마다 다시 읽힌다
+      - name: ai-sre
+        webhook_configs:
+          - url: http://api.ai-sre.svc:8080/v1/alertmanager/webhook
+            send_resolved: true
+            max_alerts: 50
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/ai-sre/token
   ingress:
     enabled: true
     ingressClassName: traefik
@@ -88,6 +109,13 @@ alertmanager:
     externalUrl: https://alertmanager.cafitac.com
     # /etc/alertmanager/secrets/alertmanager-discord/webhook-url 로 마운트된다
     secrets: [alertmanager-discord]
+    # ai-sre 웹훅 토큰 → /etc/alertmanager/ai-sre/token. secrets 목록이 아니라 optional 볼륨으로 단다:
+    # Secret 이 없어도 파드는 뜨고(Discord 는 그대로) ai-sre 로 보내기만 실패한다
+    volumes:
+      - name: ai-sre-token
+        secret: { secretName: ai-sre-alertmanager-token, optional: true }
+    volumeMounts:
+      - { name: ai-sre-token, mountPath: /etc/alertmanager/ai-sre, readOnly: true }
     resources:
       requests: { cpu: 20m, memory: 64Mi }
       limits: { cpu: 200m, memory: 256Mi }

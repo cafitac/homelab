@@ -1,0 +1,33 @@
+# Alertmanager 설정 검사 — 차트(argocd/apps/monitoring.yaml 의 판)로 렌더한 설정을 amtool check-config 하고,
+# 경로 표(ai-sre 경로가 Discord 로 가는 경보를 바꾸지 않는다)를 확인한다. 클러스터에는 닿지 않는다.
+# 러너에 깔린 helm · yq · docker 를 쓴다. amtool 은 테스트가 고정한 alertmanager 이미지(digest)에서 돌린다.
+name: amtool
+
+on:
+  pull_request:
+    paths:
+      - monitoring/kube-prometheus-stack.values.yaml
+      - monitoring/alertmanager_test.py
+      - argocd/apps/monitoring.yaml
+      - .github/workflows/amtool.yml
+  push:
+    branches: [main]
+    paths:
+      - monitoring/kube-prometheus-stack.values.yaml
+      - monitoring/alertmanager_test.py
+      - argocd/apps/monitoring.yaml
+      - .github/workflows/amtool.yml
+
+permissions:
+  contents: read
+
+jobs:
+  check-config:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - run: helm version --short && yq --version && docker version --format '{{.Server.Version}}'
+      - run: python3 -m unittest -v monitoring/alertmanager_test.py

@@ -6,7 +6,15 @@
 #   (선택) ConfigMap ai-sre-secret-fingerprints(secret-fingerprints) — sandbox 의 비밀값 지문, 없어도 뜬다
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: ai-sre
+# namespace: ai-sre 와 같지만 적어 둔 namespace 는 그대로 둔다(unsetOnly) — rbac.yaml 의 Role · RoleBinding 은 argocd 에 있어야 한다
+transformers:
+  - |-
+    apiVersion: builtin
+    kind: NamespaceTransformer
+    metadata:
+      name: ai-sre-namespace
+      namespace: ai-sre
+    unsetOnly: true
 resources:
   - namespace.yaml
   - networkpolicy.yaml
@@ -15,6 +23,7 @@ resources:
   - api.yaml
   - worker.yaml
   - sandbox.yaml
+  - rbac.yaml
 # 이미지는 레지스트리 없이 태그=cafitac/ai-sre 커밋(12 자리)으로 가져온다(apps/skills · apps/ppt 와 같다). 빌드 · import 는 소유자(H2).
 #   ai-sre         = docker/api.Dockerfile (api · worker 공용)
 #   ai-sre-sandbox = docker/sandbox/Dockerfile (docker/sandbox.Dockerfile 이 아니다 — 그것은 CLI 만 든 옛 이미지)

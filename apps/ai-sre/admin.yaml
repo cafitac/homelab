@@ -1,0 +1,48 @@
+# ai-sre 소유자 관리 화면(B7a 의 /admin 과 관리 API)을 ai-sre.cafitac.com 으로 연다(B7b, 소유자 결정 2026-11-12). 설계 07 §2.7 · §17.
+# ⭐ Cloudflare Access 앱(정책 owner)이 이 호스트를 먼저 막고 있어야 한다 — *.cafitac.com 와일드카드가 이미 Traefik 으로 오므로
+#    Access 없이 이 Ingress 가 생기면 그 순간 관리 경로가 인터넷에 보인다(api 가 JWT 를 다시 검증하므로 열리지는 않지만, 벽은 둘이어야 한다).
+#    순서: Access 앱 → 비로그인 302 확인 → AUD 를 아래 ConfigMap 에 넣고 이 PR 병합(Argo) → 다시 302 확인 → 로그인 뒤 /admin
+# 급히 닫을 때: Cloudflare 의 cafitac.com 영역에 WAF 사용자 규칙 (http.host eq "ai-sre.cafitac.com") → Block 을 더한다(클러스터에 닿지 않고 바로 막힌다).
+#   ⚠️ Access 앱을 끄거나 지우지 않는다 — 그러면 Access 보호가 사라져 와일드카드 터널로 이 호스트가 그대로 열린다. 이미 받은 JWT 는 만료까지 유효하다.
+#   git 되돌리기만으로는 안 닫힌다 — argocd/apps/ai-sre.yaml 이 prune 을 꺼 두어 이 Ingress 가 남는다. 되돌린 뒤 kubectl -n ai-sre delete ingress admin 을 소유자가 직접 한다.
+# 이 호스트로는 관리 경로만 지난다(아래 경로 규칙이 전부). 웹훅(/v1/alertmanager/webhook) · /metrics · /healthz · /docs · /openapi.json 과
+#   sandbox 는 이 호스트로 닿지 않는다 — 규칙에 없는 경로는 Traefik 이 404 로 끝내고 api 까지 가지 않는다.
+# 경로는 Exact 와 「/ 로 끝나는 Prefix」만 쓴다. Traefik 의 Prefix 는 글자 단위 PathPrefix 라(/v1/kpi 가 /v1/kpix 에도 맞는다)
+#   끝의 / 가 경계 역할을 한다. 그래서 두 의미의 차이는 /admin/static(끝 / 없음, 요소 단위에서만 맞고 api 에서 404) 하나뿐이고
+#   어느 의미로 읽어도 관리 밖 경로는 맞지 않는다(manifest_test.py 가 둘 다 본다).
+# 메서드는 가리지 않는다: 이 경로들의 쓰기(POST /v1/incidents 수동 장애 · POST …/ack · PUT /v1/flags/{key})는 모두 소유자 관리 동작이고
+#   api 가 같은 Access 소유자 검사를 본문을 읽기 전에 한다. /v1/kpi 는 GET 뿐이다(지표 적재용 POST 는 없다).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: admin
+spec:
+  rules:
+    - host: ai-sre.cafitac.com
+      http:
+        paths:
+          # 관리 화면과 그 스크립트 · 스타일(admin.js · admin.css 두 파일만, api 쪽 허용 목록)
+          - { path: /admin, pathType: Exact, backend: { service: { name: api, port: { number: 8080 } } } }
+          - { path: /admin/static/, pathType: Prefix, backend: { service: { name: api, port: { number: 8080 } } } }
+          # 장애 목록 · 수동 장애(POST) / 상세 · 확인(POST …/ack)
+          - { path: /v1/incidents, pathType: Exact, backend: { service: { name: api, port: { number: 8080 } } } }
+          - { path: /v1/incidents/, pathType: Prefix, backend: { service: { name: api, port: { number: 8080 } } } }
+          # flag 목록 / 소유자 스위치(PUT /v1/flags/{key})
+          - { path: /v1/flags, pathType: Exact, backend: { service: { name: api, port: { number: 8080 } } } }
+          - { path: /v1/flags/, pathType: Prefix, backend: { service: { name: api, port: { number: 8080 } } } }
+          # KPI 보기(GET /v1/kpi?target=)
+          - { path: /v1/kpi, pathType: Exact, backend: { service: { name: api, port: { number: 8080 } } } }
+---
+# api 가 Access JWT 를 검증할 때 쓰는 값(src/ai_sre/admin/access.py · settings/infra.py 의 AI_SRE_ACCESS_*). 비밀이 아니다(apps/trading/lab.yaml 과 같다).
+#   AI_SRE_ACCESS_TEAM_DOMAIN: 스킴 없이 팀 도메인만 — issuer 는 https://<이 값>, 키는 https://<이 값>/cdn-cgi/access/certs
+#   AI_SRE_ACCESS_AUDIENCE: Access 앱 ai-sre 의 Application Audience (AUD) Tag(64 자 hex). 소유자가 앱을 만든 뒤 넣는다.
+#     ⚠️ 자리표시 값인 동안 manifest_test.py 가 실패한다 — 그대로는 병합하지 않는다. 값이 비거나 틀리면 관리 경로는 모두 403 이다(닫힌 쪽).
+#   소유자 이메일(AI_SRE_ACCESS_OWNER_EMAIL)은 공개 저장소에 두지 않고 Secret ai-sre-owner 에서 온다(api.yaml).
+# 값을 바꾸면 api 를 다시 띄워야 적용된다(envFrom 은 시작할 때 한 번 읽는다).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-sre-access
+data:
+  AI_SRE_ACCESS_TEAM_DOMAIN: cafitac.cloudflareaccess.com
+  AI_SRE_ACCESS_AUDIENCE: REPLACE_WITH_ACCESS_AUD_TAG

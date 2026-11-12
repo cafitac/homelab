@@ -451,6 +451,14 @@ head -c 100 /dev/zero > "$out"
                     hits.append(p)
         return hits
 
+    def test_api_reaches_only_cloudflare_on_443_for_the_access_keys(self):
+        # cafitac.cloudflareaccess.com 의 주소(2026-11-12 조회) — 서명 키를 못 받으면 소유자도 403 이다
+        for a in ('104.19.195.29', '104.19.194.29', '2606:4700:300a::6813:c21d'):
+            self.assertTrue(self.eg('api', ('ip', a), 443), a)
+        self.assertFalse(self.eg('api', ('ip', '104.19.195.29'), 80))
+        for a in ('8.8.8.8', '140.82.112.3', '160.79.104.10', '10.43.0.1', '192.168.5.2', '169.254.169.254'):
+            self.assertFalse(self.eg('api', ('ip', a), 443), a)
+
     def test_admin_host_exposes_only_the_admin_paths(self):
         ing = self.admin_ingress()
         self.assertEqual(ing['metadata'].get('annotations'), None)  # 미들웨어 · 엔트리포인트 덮어쓰기 없음

@@ -140,8 +140,8 @@ class ManifestTest(unittest.TestCase):
             self.assertNotEqual(self.workload(name)['spec']['template']['spec'].get('serviceAccountName'), 'ai-sre-reader', name)
 
     def test_secret_refs_are_names_only(self):
-        self.assertEqual(secret_refs(self.docs), {'ai-sre-db', 'ai-sre-alertmanager', 'ai-sre-discord', 'ai-sre-claude'})
-        self.assertEqual(secret_refs(self.workload('api')), {'ai-sre-db', 'ai-sre-alertmanager'})
+        self.assertEqual(secret_refs(self.docs), {'ai-sre-db', 'ai-sre-alertmanager', 'ai-sre-discord', 'ai-sre-claude', 'ai-sre-owner'})
+        self.assertEqual(secret_refs(self.workload('api')), {'ai-sre-db', 'ai-sre-alertmanager', 'ai-sre-owner'})
         self.assertEqual(secret_refs(self.workload('worker')), {'ai-sre-db', 'ai-sre-discord'})
 
     def test_default_deny_is_empty_and_no_rule_opens_all_peers(self):
@@ -214,6 +214,14 @@ class ManifestTest(unittest.TestCase):
         self.assertFalse(self.ing('api', ('pod', mon, {'app.kubernetes.io/name': 'grafana'}), 8080))
         self.assertFalse(self.ing('api', pod('worker'), 8080))
         self.assertFalse(self.ing('api', ('pod', mon, {'app.kubernetes.io/name': 'alertmanager'}), 9999))
+        # B7b: kube-system 의 Traefik 만, 8080 만. 다른 namespace 의 traefik 라벨 · kube-system 의 다른 파드는 아니다
+        traefik = ('pod', {'kubernetes.io/metadata.name': 'kube-system'}, {'app.kubernetes.io/name': 'traefik'})
+        self.assertTrue(self.ing('api', traefik, 8080))
+        self.assertFalse(self.ing('api', traefik, 9999))
+        self.assertFalse(self.ing('api', ('pod', mon, {'app.kubernetes.io/name': 'traefik'}), 8080))
+        self.assertFalse(self.ing('api', ('pod', {'kubernetes.io/metadata.name': 'kube-system'}, {'k8s-app': 'kube-dns'}), 8080))
+        for other in ('worker', 'sandbox', 'db'):
+            self.assertFalse(self.ing(other, traefik, 8080), other)
 
     def test_worker_takes_only_prometheus_on_the_metrics_port(self):
         mon = {'kubernetes.io/metadata.name': 'monitoring'}
@@ -409,13 +417,75 @@ head -c 100 /dev/zero > "$out"
             self.assertNotIn('type', services[name])  # ClusterIP
         self.assertNotIn('worker', services)
         kinds = {d['kind'] for d in self.docs}
-        self.assertFalse(kinds & {'Ingress', 'IngressRoute', 'ServiceMonitor'})  # /metrics 는 클러스터 안에서만(소유자 결정)
+        self.assertFalse(kinds & {'IngressRoute', 'ServiceMonitor'})  # /metrics 는 클러스터 안에서만(소유자 결정)
+        self.assertEqual([d['metadata']['name'] for d in self.docs if d['kind'] == 'Ingress'], ['admin'])  # 관리 경로만(test_admin_host_*)
         for d in self.docs:
             for c in d.get('spec', {}).get('template', {}).get('spec', {}).get('containers', []):
                 if c['image'].startswith('ai-sre'):
                     name, _, tag = c['image'].partition(':')
                     self.assertRegex(tag, r'^[0-9a-f]{12}$', c['image'])
                     self.assertEqual(c['imagePullPolicy'], 'IfNotPresent')
+
+    # --- B7b: 관리 화면 호스트 ai-sre.cafitac.com ---
+    ADMIN_PATHS = {('/admin', 'Exact'), ('/admin/static/', 'Prefix'), ('/v1/incidents', 'Exact'), ('/v1/incidents/', 'Prefix'),
+                   ('/v1/flags', 'Exact'), ('/v1/flags/', 'Prefix'), ('/v1/kpi', 'Exact')}
+
+    def admin_ingress(self):
+        return next(d for d in self.docs if d['kind'] == 'Ingress')
+
+    @staticmethod
+    def routes(ingress, path, strict):
+        """path 에 맞는 규칙. strict=True 는 쿠버네티스 의미(요소 단위 Prefix), False 는 Traefik 의 글자 단위 PathPrefix."""
+        hits = []
+        for rule in ingress['spec']['rules']:
+            for p in rule['http']['paths']:
+                want, kind = p['path'], p['pathType']
+                if kind == 'Exact':
+                    ok = path == want
+                elif strict:
+                    w = want.rstrip('/')
+                    ok = path == w or path.startswith(w + '/') or w == ''
+                else:
+                    ok = path.startswith(want)
+                if ok:
+                    hits.append(p)
+        return hits
+
+    def test_admin_host_exposes_only_the_admin_paths(self):
+        ing = self.admin_ingress()
+        self.assertEqual(ing['metadata'].get('annotations'), None)  # 미들웨어 · 엔트리포인트 덮어쓰기 없음
+        self.assertNotIn('defaultBackend', ing['spec'])
+        self.assertNotIn('tls', ing['spec'])  # TLS 는 Cloudflare 가 끝낸다
+        self.assertEqual([r['host'] for r in ing['spec']['rules']], ['ai-sre.cafitac.com'])
+        paths = ing['spec']['rules'][0]['http']['paths']
+        self.assertEqual({(p['path'], p['pathType']) for p in paths}, self.ADMIN_PATHS)
+        self.assertEqual(len(paths), len(self.ADMIN_PATHS))
+        for p in paths:
+            self.assertEqual(p['backend'], {'service': {'name': 'api', 'port': {'number': 8080}}})
+            self.assertTrue(p['pathType'] == 'Exact' or p['path'].endswith('/'), p)  # 끝 / 가 경계 — 두 의미에서 같은 경로만 맞는다
+        for strict in (True, False):
+            for ok in ('/admin', '/admin/static/admin.js', '/admin/static/admin.css', '/v1/incidents', '/v1/incidents/abc',
+                       '/v1/incidents/abc/ack', '/v1/flags', '/v1/flags/intake', '/v1/kpi'):
+                self.assertTrue(self.routes(ing, ok, strict), (ok, strict))
+            for bad in ('/', '/metrics', '/healthz', '/v1/alertmanager/webhook', '/v1/alertmanager', '/run', '/docs', '/redoc',
+                        '/openapi.json', '/docs/oauth2-redirect', '/v1', '/v1/', '/admin/', '/adminx', '/admin/x', '/admin/staticx',
+                        '/v1/incidentsx', '/v1/flagsx', '/v1/kpi/', '/v1/kpix', '/v1/kpi/x', '/Admin', '/metrics/', '/v1/metrics'):
+                self.assertEqual(self.routes(ing, bad, strict), [], (bad, strict))
+
+    def test_admin_access_settings_match_access_py_and_aud_is_filled(self):
+        api = self.workload('api')['spec']['template']['spec']
+        c = next(x for x in api['containers'] if x['name'] == 'api')
+        self.assertEqual(c['envFrom'], [{'configMapRef': {'name': 'ai-sre-access'}}, {'secretRef': {'name': 'ai-sre-owner', 'optional': True}}])
+        for init in api['initContainers']:
+            self.assertNotIn('envFrom', init)
+        self.assertFalse({e['name'] for e in c['env']} & {'AI_SRE_ACCESS_TEAM_DOMAIN', 'AI_SRE_ACCESS_AUDIENCE', 'AI_SRE_ACCESS_OWNER_EMAIL'})
+        cm = next(d for d in self.docs if d['kind'] == 'ConfigMap' and d['metadata']['name'] == 'ai-sre-access')
+        # settings/infra.py 의 env_prefix AI_SRE_ + access_team_domain · access_audience (소유자 이메일은 Secret 쪽)
+        self.assertEqual(set(cm['data']), {'AI_SRE_ACCESS_TEAM_DOMAIN', 'AI_SRE_ACCESS_AUDIENCE'})
+        self.assertEqual(cm['data']['AI_SRE_ACCESS_TEAM_DOMAIN'], 'cafitac.cloudflareaccess.com')  # 스킴 없이 — issuer 는 https://<값>
+        aud = cm['data']['AI_SRE_ACCESS_AUDIENCE']
+        # ⚠️ 자리표시 값이면 여기서 실패한다: 소유자가 Access 앱 ai-sre 의 AUD Tag 를 넣기 전에는 병합하지 않는다(admin.yaml)
+        self.assertRegex(aud, r'^[0-9a-f]{64}$', 'AI_SRE_ACCESS_AUDIENCE 가 아직 자리표시 값이다 — Access 앱의 AUD Tag 를 넣는다')
 
     def test_argo_application_never_prunes(self):
         out = subprocess.run(['yq', '-o=json', '-I=0', '.', 'argocd/apps/ai-sre.yaml'], cwd=ROOT, text=True, capture_output=True, check=True).stdout

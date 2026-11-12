@@ -27,3 +27,5 @@ jobs:
           persist-credentials: false
       - run: kubectl version --client && yq --version && docker version --format '{{.Server.Version}}'
       - run: python3 -m unittest -v apps/ai-sre/monitoring_test.py
+      # 격리 정책 · 관리 화면 Ingress · Access 설정(B7b). AUD 가 자리표시 값인 동안 여기서 실패한다(apps/ai-sre/admin.yaml)
+      - run: python3 -m unittest -v apps/ai-sre/manifest_test.py

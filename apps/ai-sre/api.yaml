@@ -1,9 +1,11 @@
 # api — Alertmanager 웹훅(POST /v1/alertmanager/webhook) · /healthz · /metrics 를 8080 에서 받는다(cafitac/ai-sre 의 docker/api.Dockerfile).
-# 들어오는 길은 networkpolicy.yaml 의 api-ingress(monitoring 의 Alertmanager · Prometheus 만)이다. Ingress 는 없다 — /metrics 는 클러스터 안에서만 수집한다(소유자 결정 2026-11-12).
+# 들어오는 길은 networkpolicy.yaml 의 api-ingress(monitoring 의 Alertmanager · Prometheus, 그리고 관리 화면 Ingress 를 위한 Traefik)이다.
+#   Ingress 는 admin.yaml 의 관리 경로뿐이다 — /metrics · 웹훅 · /healthz 는 클러스터 안에서만 닿는다(소유자 결정 2026-11-12).
 # 스키마 마이그레이션은 initContainer(python -m ai_sre.db)가 advisory lock 아래 앞으로만 적용한 뒤 api 가 뜬다(설계 07 §13).
 # DB 접속: AI_SRE_DATABASE_URL 은 libpq 키워드 문자열이고 사용자 · 비밀번호 · DB 이름은 PG* 환경변수(Secret ai-sre-db)에서 libpq 가 읽는다 —
 #   비밀번호를 URL 에 넣지 않으므로 특수문자를 이스케이프할 일이 없다.
-# 관리 화면의 Cloudflare Access 설정(AI_SRE_ACCESS_*)은 주지 않는다 — 없으면 관리 경로는 모두 거부된다(관리 화면 Ingress 는 B7b).
+# 관리 화면의 Cloudflare Access 설정(AI_SRE_ACCESS_*, B7b): 팀 도메인 · AUD 는 ConfigMap ai-sre-access(admin.yaml), 소유자 이메일은 Secret ai-sre-owner.
+#   셋 중 하나라도 비면 관리 경로는 모두 거부된다(access.py). Secret 은 optional 이라 없어도 웹훅 · 진단은 그대로 뜬다.
 # 효과 flag 는 모두 DB 의 runtime_flag 에 있고 기본값이 OFF 다. 이 매니페스트는 어떤 flag 도 켜지 않는다(환경변수 토글 없음, AC-24).
 apiVersion: apps/v1
 kind: Deployment
@@ -48,6 +50,10 @@ spec:
           image: ai-sre
           imagePullPolicy: IfNotPresent
           env: *dbenv
+          envFrom:
+            - configMapRef: { name: ai-sre-access }
+            # 키 하나: AI_SRE_ACCESS_OWNER_EMAIL(Access 정책의 owner 와 같은 주소). 공개 저장소에 두지 않으려고 Secret 이다
+            - secretRef: { name: ai-sre-owner, optional: true }
           securityContext: *csc
           ports: [{ containerPort: 8080, name: http }]
           readinessProbe:

@@ -2,11 +2,11 @@
 # 정책은 합산되므로 아래가 전부다. 파드 라벨 약속(A10b 가 지킨다): app 이 db · backup · api · worker · sandbox 중 하나.
 #   db      ← api · worker · backup (5432).  나가는 길 없음(DNS 만).
 #   backup  → db (5432)
-#   api     ← monitoring 의 Alertmanager(웹훅) · Prometheus(지표) (8080).  → db
+#   api     ← monitoring 의 Alertmanager(웹훅) · Prometheus(지표) · kube-system 의 Traefik(관리 화면 Ingress, admin.yaml) (8080).  → db
 #   worker  ← monitoring 의 Prometheus(지표, 8080).  → db · sandbox(8080) · monitoring(9090 Prometheus · 9093 Alertmanager · 3100 Loki) · 인터넷 HTTPS(GitHub · Discord · 결재함의 Cloudflare)
 #   sandbox ← worker 만 (8080).  → Anthropic 대역 HTTPS 뿐, DNS 도 없다 — DB · k8s · 다른 파드 · 사설 대역 모두 닿지 않는다
-# 이 정책 세트가 열지 않은 것(뒤 단위가 자기 정책을 이 파일에 더한다): k8s API(Argo 읽기 Role 과 함께), scorer · sweep 의 DB 길,
-#   관리 화면 Ingress(B7b). 지금 열려 있지 않은 길은 닫혀 있는 쪽이 안전한 쪽이다.
+# 이 정책 세트가 열지 않은 것(뒤 단위가 자기 정책을 이 파일에 더한다): k8s API(Argo 읽기 Role 과 함께), scorer · sweep 의 DB 길.
+#   지금 열려 있지 않은 길은 닫혀 있는 쪽이 안전한 쪽이다.
 # 이 클러스터는 새 Pod 시작 약 50–60 초 뒤 허용 규칙이 생긴다(apps/skills/egress.yaml 주석) — 재시작 직후 잠깐은 연결이 실패할 수 있다.
 # 실제 차단은 머지 · 배포 뒤 소유자가 파드 안에서 확인한다(이 PR 은 클러스터에 닿지 않았다).
 apiVersion: networking.k8s.io/v1
@@ -74,13 +74,20 @@ spec:
     matchLabels: { app: api }
   policyTypes: [Ingress]
   ingress:
-    # Alertmanager 웹훅(POST /v1/alertmanager/webhook, bearer 토큰) · Prometheus 의 /metrics. 다른 파드 · Traefik 은 받지 않는다.
+    # Alertmanager 웹훅(POST /v1/alertmanager/webhook, bearer 토큰) · Prometheus 의 /metrics. 다른 파드는 받지 않는다.
     - from:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: monitoring }
           podSelector:
             matchExpressions:
               - { key: app.kubernetes.io/name, operator: In, values: [alertmanager, prometheus] }
+      ports: [{ port: 8080, protocol: TCP }]
+    # Traefik(B7b) — ai-sre.cafitac.com 의 관리 경로만 넘긴다(어느 경로인지는 admin.yaml 의 Ingress 가 정한다). worker · sandbox 에는 없다
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: traefik }
       ports: [{ port: 8080, protocol: TCP }]
 ---
 apiVersion: networking.k8s.io/v1

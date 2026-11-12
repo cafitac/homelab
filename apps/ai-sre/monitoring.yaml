@@ -1,0 +1,103 @@
+# ai-sre 자기 관측(B9b, 설계 07 §13): api · worker 의 /metrics 수집과 경보 규칙. 지표는 cafitac/ai-sre 의 src/ai_sre/metrics/ (B9a).
+# /metrics 는 클러스터 안에서만 읽는다 — Ingress 없음(소유자 결정 2026-11-12). 들어오는 길은 networkpolicy.yaml 의 api-ingress · worker-ingress.
+# 경보는 Discord 로만 간다(monitoring/kube-prometheus-stack.values.yaml 맨 끝 경로). ai-sre 웹훅으로는 돌려보내지 않는다(고리).
+# 검사: python3 -m unittest apps/ai-sre/monitoring_test.py — promtool check · test rules, 규칙이 쓰는 지표 이름이 ai-sre 가 내는 것인지.
+# 아직 없는 경보(지표가 없거나 수집되지 않는다 — 지어내지 않는다):
+#   AiSreSecretScanDrops — ai_sre_secret_scan_drops_total(diagnosis/fanout.py)은 정의만 있고 worker /metrics 에 연결되지 않았다(A12a/A12b)
+#   AiSreManualRequired — 실행기(D 단위)가 생길 때.  AiSrePipelineStale — flag 가 모두 OFF 인 동안은 작업이 돌지 않아 늘 뜬다(활성화 뒤)
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ai-sre
+spec:
+  # job 라벨 = 파드 라벨 app(api · worker). worker 는 Service 가 없어 ServiceMonitor 대신 PodMonitor 를 쓴다
+  jobLabel: app
+  selector:
+    matchExpressions:
+      - { key: app, operator: In, values: [api, worker] }
+  podMetricsEndpoints:
+    # 포트 이름으로 고른다 — api 컨테이너 포트는 http, worker 는 metrics(둘 다 8080). 이름이 없는 파드는 그 항목에서 빠진다
+    - { port: http, path: /metrics, interval: 30s }
+    - { port: metrics, path: /metrics, interval: 30s }
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ai-sre
+spec:
+  groups:
+    - name: ai-sre.self
+      rules:
+        # 수집 대상이 아예 없을 때(PodMonitor 가 파드를 못 고름 · replicas 0)는 up 이 없어 == 0 으로 안 잡힌다 — absent 도 본다.
+        # ⚠️ 봉쇄(worker replicas 0)도 이 경보를 띄운다. 일부러 내렸으면 silence 를 건다
+        - alert: AiSreTargetDown
+          expr: |
+            up{namespace="ai-sre", job=~"api|worker"} == 0
+            or absent(up{namespace="ai-sre", job="api"})
+            or absent(up{namespace="ai-sre", job="worker"})
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "ai-sre {{ $labels.job }} 의 /metrics 를 5분째 못 읽는다"
+            description: "api 가 멈추면 Alertmanager 웹훅(경보 접수)이, worker 가 멈추면 진단 · Discord 보고가 멈춘다. 파드 상태 · 재시작 로그를 먼저 본다"
+        # 매 tick 이 끝날 때 찍힌다(성공 · 실패 모두). 진단 하나가 최대 300 초라 300 초 넘김 + for 10m = 마지막 tick 뒤 15분.
+        # 둘째 줄: worker 가 떠 있는데 tick 이 한 번도 끝나지 않았다(DB 에 못 붙으면 tick 이 돌지 않는다). worker 가 죽으면(up 0) AiSreTargetDown 만 뜬다
+        - alert: AiSreWorkerHeartbeatStale
+          expr: |
+            (time() - ai_sre_worker_last_tick_timestamp_seconds{namespace="ai-sre"} > 300
+              and on(pod) up{namespace="ai-sre", job="worker"} == 1)
+            or (up{namespace="ai-sre", job="worker"} == 1
+                unless on(pod) ai_sre_worker_last_tick_timestamp_seconds{namespace="ai-sre"})
+          for: 10m
+          labels: { severity: critical }
+          annotations:
+            summary: "ai-sre worker 루프가 15분째 tick 을 끝내지 못했다"
+            description: "작업 큐가 멈췄다 — 진단 · 보고가 나가지 않는다. worker 로그에서 「worker tick failed」(DB 연결) · 멈춘 작업을 본다"
+        # DEPLOY_OBSERVE 가 60초마다 감시점(watermark)을 올린다. 값 0 = 아직 한 번도 관측하지 않은 대상 — 그때는 뜨지 않는다(> 0 거름).
+        # 이유: DEPLOY_OBSERVE 는 ai-sre #39 가 붙이는 중이라 그 전에는 모든 대상이 0 이다. 거르지 않으면 머지 직후부터 늘 떠 있는 경보가 되어
+        #   Discord 의 다른 경보까지 무시하게 만든다. 대가: 처음부터 한 번도 관측되지 않는 대상은 조용하다 — #39 배포 뒤 소유자가 0 이 아닌지 확인한다
+        - alert: AiSreLedgerStale
+          expr: time() - (ai_sre_ledger_last_observed_timestamp_seconds{namespace="ai-sre"} > 0) > 900
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "ai-sre 배포 원장이 {{ $labels.target }} 을 20분째 관측하지 못했다"
+            description: "진단의 「최근 변경」 단계가 옛 원장을 본다. worker 로그의 DEPLOY_OBSERVE 실패(Argo 읽기 · kube API 길)를 본다"
+        # B8 의 reaper 가 30분 넘은 진단을 끝내야 한다 — 그래도 남아 있으면 reaper 나 worker 가 멈춘 것이다
+        - alert: AiSreDiagnosisStuck
+          expr: ai_sre_diagnosis_oldest_running_age_seconds{namespace="ai-sre"} > 1800
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "ai-sre 진단 하나가 {{ $value | humanizeDuration }} 째 RUNNING 이다"
+        # DEAD 는 지우지 않고 남으므로 개수가 아니라 30분 사이 늘었는지 본다. api 가 다시 떠도 이어지게 channel 로 묶는다
+        - alert: AiSreOutboxDead
+          expr: |
+            max by (namespace, channel) (ai_sre_outbox_messages{namespace="ai-sre", status="DEAD"})
+            - max by (namespace, channel) (ai_sre_outbox_messages{namespace="ai-sre", status="DEAD"} offset 30m) > 0
+          labels: { severity: warning }
+          annotations:
+            summary: "ai-sre {{ $labels.channel }} 보고 {{ $value }} 건이 DEAD 가 됐다(30분 사이)"
+            description: "보고가 끝내 나가지 않았다(재시도 소진 · 보냈는지 모름). outbox_message 의 DEAD 행을 본다"
+        # 4xx(토큰 불일치 401 · 크기 413) · 5xx 모두. 카운터 시계열은 그 코드의 첫 요청에 1 로 생겨(0 을 미리 내지 않는다) increase() 가
+        #   그 1건을 세지 못한다 — 둘째 줄이 「10분 전에는 없던 양수 시계열」(api 가 다시 떠 pod 가 바뀐 뒤의 첫 실패 포함)을 따로 잡는다.
+        #   10분 전 같은 pod 의 수집이 실패 중이었으면(up 0) 빼 둔다 — 수집이 돌아오면 옛 오류 카운터가 「새 시계열」처럼 보인다(그 동안은 AiSreTargetDown)
+        - alert: AiSreWebhookErrors
+          expr: |
+            sum by (namespace, code) (increase(ai_sre_http_requests_total{namespace="ai-sre", route="/v1/alertmanager/webhook", code=~"4xx|5xx"}[10m])) > 0
+            or sum by (namespace, code) (
+              ai_sre_http_requests_total{namespace="ai-sre", route="/v1/alertmanager/webhook", code=~"4xx|5xx"} > 0
+              unless ai_sre_http_requests_total{namespace="ai-sre", route="/v1/alertmanager/webhook", code=~"4xx|5xx"} offset 10m
+              unless on(pod) (up{namespace="ai-sre", job="api"} offset 10m == 0))
+          labels: { severity: warning }
+          annotations:
+            summary: "ai-sre 경보 접수 웹훅이 {{ $labels.code }} 로 답했다(10분 사이 {{ $value | humanize }} 건)"
+            description: "401 이면 monitoring 의 alertmanager-discord 키 ai-sre-token 과 ai-sre-alertmanager 키 token 이 다르다(PR #196)"
+        # api 가 DB 에서 파이프라인 지표를 못 읽으면 그 지표들이 빠진다 — 그러면 위의 원장 · 진단 · outbox 경보도 조용해지므로 따로 알린다
+        - alert: AiSrePipelineMetricsUnavailable
+          expr: ai_sre_pipeline_collect_success{namespace="ai-sre"} == 0
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "ai-sre api 가 10분째 DB 에서 파이프라인 지표를 읽지 못한다"
+            description: "원장 · 진단 · outbox 경보가 이동안 뜨지 않는다. api 로그의 「pipeline metrics unavailable」 · db 파드를 본다"

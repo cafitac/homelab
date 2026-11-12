@@ -55,7 +55,7 @@ alertmanager:
       routes:
         # ⭐ ai-sre(설계 07 §13) — 맨 앞 + continue: true 라 경보의 사본만 받고, 아래 경로(Discord 포함)는 이 경로가 없을 때와 똑같이 고른다.
         #    받는 범위: critical · warning 전부(대상 판별은 ai-sre 가 한다 — 대상 밖이면 감사 기록만 남긴다).
-        #    빼는 것: 하트비트 · 억제용, ai-sre 자신의 경보(AiSre.* · namespace ai-sre), Alertmanager.*(웹훅 실패 경보가 실패하는 웹훅으로 가는 고리)
+        #    빼는 것: 하트비트 · 억제용, ai-sre 자신의 경보(AiSre.* · namespace ai-sre — AiSre.* 는 맨 끝 경로가 Discord 로 보낸다), Alertmanager.*(웹훅 실패 경보가 실패하는 웹훅으로 가는 고리)
         #    검사: monitoring/alertmanager_test.py(CI .github/workflows/amtool.yml)
         - receiver: ai-sre
           continue: true
@@ -76,6 +76,13 @@ alertmanager:
           matchers:
             - severity =~ "critical|warning"
             - namespace =~ "interview-coach|judge-board|portfolio|ppt|trading|preview-hub"
+        # ai-sre 자신의 경보(apps/ai-sre/monitoring.yaml, B9b) — 맨 앞 ai-sre 경로가 일부러 뺀 것(고리 방지)이라 Discord 로만 간다.
+        #    alertname 으로만 고른다: 위 경로들과 겹치지 않아 다른 경보의 수신처는 그대로다(alertmanager_test.py 가 지문으로 확인).
+        #    namespace ai-sre 의 차트 기본 경보(KubePodCrashLooping 등)는 여기 넣지 않았다 — 지금처럼 null(소유자 결정 대기)
+        - receiver: discord
+          matchers:
+            - severity =~ "critical|warning"
+            - alertname =~ "AiSre.*"
     receivers:
       - name: "null"
       - name: discord

@@ -3,10 +3,10 @@
 #   db      ← api · worker · backup (5432).  나가는 길 없음(DNS 만).
 #   backup  → db (5432)
 #   api     ← monitoring 의 Alertmanager(웹훅) · Prometheus(지표) (8080).  → db
-#   worker  → db · sandbox(8080) · monitoring(9090 Prometheus · 9093 Alertmanager · 3100 Loki) · 인터넷 HTTPS(GitHub · Discord · 결재함의 Cloudflare)
+#   worker  ← monitoring 의 Prometheus(지표, 8080).  → db · sandbox(8080) · monitoring(9090 Prometheus · 9093 Alertmanager · 3100 Loki) · 인터넷 HTTPS(GitHub · Discord · 결재함의 Cloudflare)
 #   sandbox ← worker 만 (8080).  → Anthropic 대역 HTTPS 뿐, DNS 도 없다 — DB · k8s · 다른 파드 · 사설 대역 모두 닿지 않는다
 # 이 정책 세트가 열지 않은 것(뒤 단위가 자기 정책을 이 파일에 더한다): k8s API(Argo 읽기 Role 과 함께), scorer · sweep 의 DB 길,
-#   worker 의 지표 포트(B9a), 관리 화면 Ingress(B7b). 지금 열려 있지 않은 길은 닫혀 있는 쪽이 안전한 쪽이다.
+#   관리 화면 Ingress(B7b). 지금 열려 있지 않은 길은 닫혀 있는 쪽이 안전한 쪽이다.
 # 이 클러스터는 새 Pod 시작 약 50–60 초 뒤 허용 규칙이 생긴다(apps/skills/egress.yaml 주석) — 재시작 직후 잠깐은 연결이 실패할 수 있다.
 # 실제 차단은 머지 · 배포 뒤 소유자가 파드 안에서 확인한다(이 PR 은 클러스터에 닿지 않았다).
 apiVersion: networking.k8s.io/v1
@@ -81,6 +81,23 @@ spec:
           podSelector:
             matchExpressions:
               - { key: app.kubernetes.io/name, operator: In, values: [alertmanager, prometheus] }
+      ports: [{ port: 8080, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-ingress
+spec:
+  podSelector:
+    matchLabels: { app: worker }
+  policyTypes: [Ingress]
+  ingress:
+    # Prometheus 의 /metrics 수집(B9b, monitoring.yaml 의 PodMonitor)만. worker 는 다른 것을 받지 않는다 — Alertmanager · Grafana 도 아니다
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: prometheus }
       ports: [{ port: 8080, protocol: TCP }]
 ---
 apiVersion: networking.k8s.io/v1

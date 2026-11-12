@@ -1,0 +1,165 @@
+# ai-sre 의 들어오는 길 · 나가는 길을 모두 기본 거부하고 파드마다 필요한 것만 연다(설계 07 §6 · §13, 수용 AC-05 의 egress 절반).
+# 정책은 합산되므로 아래가 전부다. 파드 라벨 약속(A10b 가 지킨다): app 이 db · backup · api · worker · sandbox 중 하나.
+#   db      ← api · worker · backup (5432).  나가는 길 없음(DNS 만).
+#   backup  → db (5432)
+#   api     ← monitoring 의 Alertmanager(웹훅) · Prometheus(지표) (8080).  → db
+#   worker  → db · sandbox(8080) · monitoring(9090 Prometheus · 9093 Alertmanager · 3100 Loki) · 인터넷 HTTPS(GitHub · Discord · 결재함의 Cloudflare)
+#   sandbox ← worker 만 (8080).  → Anthropic 대역 HTTPS 뿐, DNS 도 없다 — DB · k8s · 다른 파드 · 사설 대역 모두 닿지 않는다
+# 이 정책 세트가 열지 않은 것(뒤 단위가 자기 정책을 이 파일에 더한다): k8s API(Argo 읽기 Role 과 함께), scorer · sweep 의 DB 길,
+#   worker 의 지표 포트(B9a), 관리 화면 Ingress(B7b). 지금 열려 있지 않은 길은 닫혀 있는 쪽이 안전한 쪽이다.
+# 이 클러스터는 새 Pod 시작 약 50–60 초 뒤 허용 규칙이 생긴다(apps/skills/egress.yaml 주석) — 재시작 직후 잠깐은 연결이 실패할 수 있다.
+# 실제 차단은 머지 · 배포 뒤 소유자가 파드 안에서 확인한다(이 PR 은 클러스터에 닿지 않았다).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  # ⚠️ sandbox 는 일부러 뺐다 — 모델이 읽는 입력에 심긴 지시가 이름 조회(<비밀>.공격자.도메인)로 데이터를 밖에 내보내는 길을 닫는다.
+  # 그래서 sandbox 파드는 hostAliases 로 api.anthropic.com 을 Anthropic 대역의 주소에 직접 박는다(sandbox.yaml).
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: NotIn, values: [sandbox] }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-ingress
+spec:
+  podSelector:
+    matchLabels: { app: db }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app, operator: In, values: [api, worker, backup] }
+      ports: [{ port: 5432, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backup-egress
+spec:
+  podSelector:
+    matchLabels: { app: backup }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { app: db }
+      ports: [{ port: 5432, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-ingress
+spec:
+  podSelector:
+    matchLabels: { app: api }
+  policyTypes: [Ingress]
+  ingress:
+    # Alertmanager 웹훅(POST /v1/alertmanager/webhook, bearer 토큰) · Prometheus 의 /metrics. 다른 파드 · Traefik 은 받지 않는다.
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+          podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/name, operator: In, values: [alertmanager, prometheus] }
+      ports: [{ port: 8080, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-egress
+spec:
+  podSelector:
+    matchLabels: { app: api }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { app: db }
+      ports: [{ port: 5432, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-egress
+spec:
+  podSelector:
+    matchLabels: { app: worker }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { app: db }
+      ports: [{ port: 5432, protocol: TCP }]
+    # sandbox 의 POST /run (8080). sandbox-ingress 의 짝
+    - to:
+        - podSelector:
+            matchLabels: { app: sandbox }
+      ports: [{ port: 8080, protocol: TCP }]
+    # 읽기: Prometheus · Alertmanager · Loki (설계 01 의 외부 시스템 표)
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+      ports:
+        - { port: 9090, protocol: TCP }
+        - { port: 9093, protocol: TCP }
+        - { port: 3100, protocol: TCP }
+    # 인터넷 HTTPS — GitHub · Discord · 결재함(Cloudflare). 사설 · 링크 로컬 · CGNAT 대역은 막는다(apps/interview-coach/server-egress.yaml 과 같은 값)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+        - ipBlock:
+            cidr: "::/0"
+            except: ["fc00::/7", "fe80::/10", "::1/128", "64:ff9b::/96"]
+      ports: [{ port: 443, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-ingress
+spec:
+  podSelector:
+    matchLabels: { app: sandbox }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: worker }
+      ports: [{ port: 8080, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-egress
+spec:
+  podSelector:
+    matchLabels: { app: sandbox }
+  policyTypes: [Egress]
+  egress:
+    # Anthropic 의 고정 주소 대역만(https://platform.claude.com/docs/en/api/ip-addresses, 2026-11-12 조회).
+    # 주소 기준이라 호스트 이름은 가리지 않는다 — 대역 밖은 어디도 못 나간다. 대역이 바뀌면 공지에 따라 여기를 고친다.
+    - to:
+        - ipBlock: { cidr: 160.79.104.0/23 }
+        - ipBlock: { cidr: 153.61.224.0/22 }
+        - ipBlock: { cidr: "2607:6bc0::/48" }
+      ports: [{ port: 443, protocol: TCP }]

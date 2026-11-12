@@ -1,0 +1,94 @@
+# sandbox — 모델 CLI(claude -p)를 격리해서 돌리는 파드(설계 07 §6, 수용 AC-05). worker 가 tarball 을 POST /run 으로 보내고 JSON 을 받는다.
+# 이 파드가 쥐는 비밀은 Claude OAuth 토큰 하나뿐이다(DB · GitHub · Access · Discord 비밀 없음). ServiceAccount 토큰도 없다.
+# 쓸 수 있는 곳은 emptyDir /work 하나(실행마다 run-* 를 만들고 지운다). 루트 파일시스템은 읽기 전용, uid 10002(worker 는 10001).
+# PID 1 은 이미지의 tini 다 — command 를 덮어쓰지 않는다(덮어쓰면 실행 뒤 같은 uid 프로세스를 모두 죽이는 정리가 거부된다).
+#   그 정리는 프로세스 namespace 를 나누지 않을 때만 안전하다: shareProcessNamespace · hostPID 를 false 로 적는다.
+# 이름 조회(DNS)가 없다: networkpolicy.yaml 이 sandbox 의 DNS 를 막고, 여기서는 resolv.conf 가 127.0.0.1 을 가리켜 조회 패킷이 파드 밖으로 나가지도 않는다.
+#   대신 hostAliases 가 api.anthropic.com 을 Anthropic 고정 대역(sandbox-egress) 안의 주소로 박는다.
+#   주소 출처: https://platform.claude.com/docs/en/api/ip-addresses 의 대역, 2026-11-12 조회 시 api.anthropic.com A 레코드 = 160.79.104.10.
+#   주소가 바뀌면 여기와 manifest_test.py 를 함께 고친다(대역 밖 주소는 시험이 막는다).
+# CLI 의 부수 트래픽(텔레메트리 · 오류 보고 · 자동 업데이트 등)은 환경변수로 끈다 — 꺼지지 않은 것이 있어도 DNS 가 없고 대역 밖은 막혀 나가지 못한다.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: sandbox }
+  template:
+    metadata:
+      labels: { app: sandbox }
+    spec:
+      serviceAccountName: sandbox
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      shareProcessNamespace: false
+      hostPID: false
+      hostIPC: false
+      hostNetwork: false
+      # 실행 하나의 상한이 120 초다. 진행 중인 요청이 끝날 시간을 준다
+      terminationGracePeriodSeconds: 150
+      dnsPolicy: "None"
+      dnsConfig:
+        nameservers: [127.0.0.1]
+      hostAliases:
+        - ip: 160.79.104.10
+          hostnames: [api.anthropic.com]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        fsGroup: 10002
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: sandbox
+          image: ai-sre-sandbox
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: CLAUDE_CODE_OAUTH_TOKEN, valueFrom: { secretKeyRef: { name: ai-sre-claude, key: oauth-token } } }
+            - { name: CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, value: "1" }
+            - { name: DISABLE_TELEMETRY, value: "1" }
+            - { name: DISABLE_ERROR_REPORTING, value: "1" }
+            - { name: DISABLE_AUTOUPDATER, value: "1" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities: { drop: [ALL] }
+          ports: [{ containerPort: 8080, name: http }]
+          # GET 경로가 없어 TCP 로 본다. 실행 중에 죽이지 않도록 liveness 는 두지 않는다
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1536Mi }
+          volumeMounts:
+            - { name: work, mountPath: /work }
+            # 이 배포의 비밀값 지문(`길이:sha256` 줄, 비밀 아님). 소유자가 저장소 밖에서 만드는 ConfigMap 이며, 없으면 패턴 규칙만 쓴다
+            - { name: fingerprints, mountPath: /etc/ai-sre, readOnly: true }
+      volumes:
+        - name: work
+          emptyDir: { sizeLimit: 1Gi }
+        - name: fingerprints
+          configMap:
+            name: ai-sre-secret-fingerprints
+            optional: true
+            items: [{ key: secret-fingerprints, path: secret-fingerprints }]
+---
+# worker 가 부르는 주소: http://sandbox.ai-sre.svc:8080 (ai_sre.worker 의 SANDBOX_URL)
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox
+spec:
+  selector: { app: sandbox }
+  ports: [{ name: http, port: 8080, targetPort: 8080 }]

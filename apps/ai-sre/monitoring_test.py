@@ -71,6 +71,10 @@ CASES = [
     ([s('ai_sre_http_requests_total', '0+1x5', route='/v1/alertmanager/webhook', method='POST', code='5xx', job='api', pod='api-a'),
       s('ai_sre_http_requests_total', '_x8 1x20', route='/v1/alertmanager/webhook', method='POST', code='5xx', job='api', pod='api-b')],
      [alert('AiSreWebhookErrors', '17m', {'code': '5xx'}), alert('AiSreWebhookErrors', '20m')]),
+    # 옛 오류 1건이 남은 채 같은 pod 의 수집이 20분 끊겼다가 돌아왔다 — 새 오류가 아니므로 뜨지 않는다
+    ([s('up', '1x10 0x20 1x20', **API),
+      s('ai_sre_http_requests_total', '1x10 _x20 1x20', route='/v1/alertmanager/webhook', method='POST', code='4xx', **API)],
+     [alert('AiSreWebhookErrors', '32m'), alert('AiSreWebhookErrors', '38m')]),
     ([s('ai_sre_http_requests_total', '0+50x20', route='/v1/alertmanager/webhook', method='POST', code='2xx', **API),
       s('ai_sre_http_requests_total', '0+1x20', route='/healthz', method='GET', code='5xx', **API)], [alert('AiSreWebhookErrors', '10m')]),
     ([s('ai_sre_pipeline_collect_success', '1x5 0x20', **API)],

@@ -2,6 +2,7 @@
 # 필요: helm · yq · docker(amtool 이 PATH 에 있으면 그것을 쓰고, 없으면 아래 고정 이미지). CI: .github/workflows/amtool.yml
 # 핵심 약속: ai-sre 경로는 맨 앞 + continue 라 Discord 로 가는 경보는 ai-sre 경로가 없을 때와 똑같다.
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,7 +14,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 # 차트 91.9.0 의 alertmanagerSpec.image 와 같은 판(v0.34.1)
 AM_IMAGE = 'quay.io/prometheus/alertmanager@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a'
-TOKEN_DIR = '/etc/alertmanager/ai-sre'
+TOKEN_FILE = '/etc/alertmanager/secrets/alertmanager-discord/ai-sre-token'  # 이미 마운트된 Secret 의 키 하나
 
 # (라벨, ai-sre 경로를 더한 뒤 받는 곳). Discord 쪽 기대값은 ai-sre 경로가 없던 때(homelab 28de702)와 같다
 CASES = [
@@ -27,7 +28,20 @@ CASES = [
     ({'alertname': 'InfoInhibitor', 'severity': 'none', 'namespace': 'judge-board'}, ['null']),
     ({'alertname': 'AiSreWebhookErrors', 'severity': 'critical', 'namespace': 'ai-sre'}, ['null']),
     ({'alertname': 'KubePodCrashLooping', 'severity': 'warning', 'namespace': 'ai-sre'}, ['null']),
+    ({'alertname': 'AlertmanagerFailedToSendAlerts', 'severity': 'warning', 'namespace': 'monitoring', 'integration': 'webhook'}, ['null']),
 ]
+# ai-sre 경로 · 수신처를 뺀 설정(경로 · Discord 수신처 · 묶음 · 억제 · 템플릿)의 지문 — main 28de702 를 렌더해 얻은 값이다.
+# Discord 쪽을 일부러 바꿀 때만 고친다(검사 대상과 독립된 기준)
+BASELINE_SHA256 = '8dd2b917a9d205cb26704607dcf66d5d75b30796e4009b6bcc8842d0eaae4f4e'
+
+
+def without_ai_sre(config):
+    return dict(config, route=dict(config['route'], routes=[r for r in config['route']['routes'] if r['receiver'] != 'ai-sre']),
+                receivers=[r for r in config['receivers'] if r['name'] != 'ai-sre'])
+
+
+def fingerprint(config):
+    return hashlib.sha256(json.dumps(config, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def run(cmd, **kw):
@@ -64,9 +78,7 @@ class AlertmanagerConfigTest(unittest.TestCase):
         cls.spec = next(d for d in docs if d['kind'] == 'Alertmanager')['spec']
         (cls.tmp / 'cfg').mkdir()
         (cls.tmp / 'cfg/full.yaml').write_text(cls.config_text)
-        stripped = dict(cls.config, route=dict(cls.config['route'], routes=cls.config['route']['routes'][1:]),
-                        receivers=[r for r in cls.config['receivers'] if r['name'] != 'ai-sre'])
-        (cls.tmp / 'cfg/without-ai-sre.yaml').write_text(json.dumps(stripped, ensure_ascii=False))
+        (cls.tmp / 'cfg/without-ai-sre.yaml').write_text(json.dumps(without_ai_sre(cls.config), ensure_ascii=False))
 
     @classmethod
     def tearDownClass(cls):
@@ -98,13 +110,16 @@ class AlertmanagerConfigTest(unittest.TestCase):
         (hook,) = receiver['webhook_configs']
         self.assertEqual(hook['url'], 'http://api.ai-sre.svc:8080/v1/alertmanager/webhook')
         self.assertEqual((hook['max_alerts'], hook['send_resolved']), (50, True))
-        self.assertEqual(hook['http_config'], {'authorization': {'type': 'Bearer', 'credentials_file': f'{TOKEN_DIR}/token'}})
+        self.assertEqual(hook['http_config'], {'authorization': {'type': 'Bearer', 'credentials_file': TOKEN_FILE}})
 
-    def test_token_volume_is_optional_so_a_missing_secret_cannot_stop_alertmanager(self):
+    def test_pod_template_is_untouched_so_alertmanager_does_not_restart(self):
+        # 파드가 다시 뜨면 emptyDir 의 silence · 알림 기록이 사라진다 — 토큰은 이미 마운트된 Secret 의 키로만 받는다
         self.assertEqual(self.spec['secrets'], ['alertmanager-discord'])
-        (vol,) = self.spec['volumes']
-        self.assertEqual(vol['secret'], {'secretName': 'ai-sre-alertmanager-token', 'optional': True})
-        self.assertEqual(self.spec['volumeMounts'], [{'name': vol['name'], 'mountPath': TOKEN_DIR, 'readOnly': True}])
+        for key in ('volumes', 'volumeMounts', 'configMaps', 'storage', 'podMetadata'):
+            self.assertNotIn(key, self.spec, key)
+
+    def test_everything_but_ai_sre_matches_the_frozen_baseline(self):
+        self.assertEqual(fingerprint(without_ai_sre(self.config)), BASELINE_SHA256)
 
     def test_routing_table(self):
         for labels, expected in CASES:

@@ -4,8 +4,9 @@
 #   backup  → db (5432)
 #   api     ← monitoring 의 Alertmanager(웹훅) · Prometheus(지표) (8080).  → db
 #   worker  → db · sandbox(8080) · monitoring(9090 Prometheus · 9093 Alertmanager · 3100 Loki) · 인터넷 HTTPS(GitHub · Discord · 결재함의 Cloudflare)
+#             · k8s API(worker-kube-api-egress, Argo CD Application 읽기 — Service 10.43.0.1:443 · 노드 192.168.5.15:55902)
 #   sandbox ← worker 만 (8080).  → Anthropic 대역 HTTPS 뿐, DNS 도 없다 — DB · k8s · 다른 파드 · 사설 대역 모두 닿지 않는다
-# 이 정책 세트가 열지 않은 것(뒤 단위가 자기 정책을 이 파일에 더한다): k8s API(Argo 읽기 Role 과 함께), scorer · sweep 의 DB 길,
+# 이 정책 세트가 열지 않은 것(뒤 단위가 자기 정책을 이 파일에 더한다): scorer · sweep 의 DB 길,
 #   worker 의 지표 포트(B9a), 관리 화면 Ingress(B7b). 지금 열려 있지 않은 길은 닫혀 있는 쪽이 안전한 쪽이다.
 # 이 클러스터는 새 Pod 시작 약 50–60 초 뒤 허용 규칙이 생긴다(apps/skills/egress.yaml 주석) — 재시작 직후 잠깐은 연결이 실패할 수 있다.
 # 실제 차단은 머지 · 배포 뒤 소유자가 파드 안에서 확인한다(이 PR 은 클러스터에 닿지 않았다).
@@ -163,3 +164,26 @@ spec:
         - ipBlock: { cidr: 153.61.224.0/22 }
         - ipBlock: { cidr: "2607:6bc0::/48" }
       ports: [{ port: 443, protocol: TCP }]
+---
+# worker 만 k8s API 로 나간다(DEPLOY_OBSERVE 의 Argo CD Application 읽기, rbac.yaml 의 ai-sre-reader). api · sandbox · db · backup 은 그대로 못 나간다.
+# 인터넷 규칙이 사설 대역을 빼므로 이 정책이 유일한 길이다. 두 주소를 모두 연다 — 어느 쪽에서 평가되든(Service 주소 · DNAT 뒤 엔드포인트) 닿도록:
+#   10.43.0.1:443          kubernetes Service 의 ClusterIP(k3s 기본 서비스 대역 10.43.0.0/16 의 첫 주소; apps/skills · ai-sre 시험이 「API」 로 쓰는 주소)
+#   192.168.5.15:55902     DNAT 뒤 엔드포인트 = colima VM(노드) 주소 · k3s API 포트. 포트 55902 는 cluster/up.sh · PLAN.md §5.1 에 적혀 있다.
+#                          ⚠️ 노드 IP 192.168.5.15 는 저장소에 적혀 있지 않다 — colima(vz) 사용자 모드 네트워크 기본값(게이트웨이 = 맥 호스트 192.168.5.2)에서
+#                          온 가정이다. 맞는지는 머지 전에 소유자가 `kubectl get endpoints kubernetes` 로 확인한다(이 PR 은 클러스터에 닿지 않았다).
+#                          틀려도 닫힌 쪽으로 틀린다: 열리지 않을 뿐 다른 곳이 열리지는 않는다. 맥 호스트(192.168.5.2)는 열지 않는다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-kube-api-egress
+spec:
+  podSelector:
+    matchLabels: { app: worker }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: { cidr: 10.43.0.1/32 }
+      ports: [{ port: 443, protocol: TCP }]
+    - to:
+        - ipBlock: { cidr: 192.168.5.15/32 }
+      ports: [{ port: 55902, protocol: TCP }]

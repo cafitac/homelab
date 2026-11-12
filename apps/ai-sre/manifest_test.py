@@ -14,6 +14,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 ANTHROPIC = {'160.79.104.0/23', '153.61.224.0/22', '2607:6bc0::/48'}  # https://platform.claude.com/docs/en/api/ip-addresses
 NS = {'kubernetes.io/metadata.name': 'ai-sre'}
+KUBE_API_SERVICE = ('10.43.0.1', 443)  # kubernetes Service 의 ClusterIP
+KUBE_API_NODE = ('192.168.5.15', 55902)  # DNAT 뒤 엔드포인트(colima VM · k3s API 포트, cluster/up.sh). 노드 IP 는 가정 — networkpolicy.yaml 주석
+SA_DIR = '/var/run/secrets/kubernetes.io/serviceaccount'
 KUBE_DNS = ('pod', {'kubernetes.io/metadata.name': 'kube-system'}, {'k8s-app': 'kube-dns'})
 
 
@@ -136,8 +139,7 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual({d['kind'] for d in self.docs} & {'ClusterRole', 'ClusterRoleBinding'}, set())
         sa = next(d for d in self.docs if d['kind'] == 'ServiceAccount' and d['metadata']['name'] == 'ai-sre-reader')
         self.assertIs(sa['automountServiceAccountToken'], False)
-        for name in ('api', 'worker', 'sandbox'):  # 아직 어느 파드도 이 계정을 쓰지 않는다
-            self.assertNotEqual(self.workload(name)['spec']['template']['spec'].get('serviceAccountName'), 'ai-sre-reader', name)
+        # 이 계정을 쓰는 파드는 worker 하나뿐이다(test_only_worker_gets_a_token_through_a_projected_volume)
 
     def test_secret_refs_are_names_only(self):
         self.assertEqual(secret_refs(self.docs), {'ai-sre-db', 'ai-sre-alertmanager', 'ai-sre-discord', 'ai-sre-claude'})
@@ -224,7 +226,7 @@ class ManifestTest(unittest.TestCase):
         self.assertTrue(self.eg('worker', pod('sandbox'), 8080))
         self.assertFalse(self.eg('worker', pod('sandbox'), 1234))
         self.assertTrue(self.eg('worker', ('ip', '140.82.112.3'), 443))
-        for a in ['10.43.0.1', '192.168.5.2', '172.16.0.1', '169.254.169.254', '100.64.0.1']:
+        for a in ['192.168.5.2', '172.16.0.1', '169.254.169.254', '100.64.0.1']:  # k8s API 의 두 주소(KUBE_API_*)만 사설 대역 중 열려 있다
             self.assertFalse(self.eg('worker', ('ip', a), 443), a)
         self.assertFalse(self.eg('worker', ('ip', '140.82.112.3'), 80))
         self.assertTrue(self.eg('backup', pod('db'), 5432))
@@ -350,7 +352,7 @@ head -c 100 /dev/zero > "$out"
         self.assertEqual(mounts['/work']['name'], 'work')
         self.assertTrue(mounts['/etc/ai-sre']['readOnly'])
 
-    def test_no_service_account_token_and_read_only_root_everywhere(self):
+    def test_automount_is_off_and_read_only_root_everywhere(self):
         uids = {'api': 10001, 'worker': 10001, 'sandbox': 10002}
         for name, uid in uids.items():
             t = self.workload(name)['spec']['template']
@@ -408,6 +410,68 @@ head -c 100 /dev/zero > "$out"
                     name, _, tag = c['image'].partition(':')
                     self.assertRegex(tag, r'^[0-9a-f]{12}$', c['image'])
                     self.assertEqual(c['imagePullPolicy'], 'IfNotPresent')
+
+    # --- 이슈 #39: worker 만 k8s API(Argo CD Application 읽기)로 나간다 ---
+    def pod_specs(self):
+        """토큰 경로를 볼 모든 파드 틀: Deployment · StatefulSet(spec.template), CronJob(spec.jobTemplate.spec.template)."""
+        for d in self.docs:
+            if d['kind'] in ('Deployment', 'StatefulSet'):
+                yield d['metadata']['name'], d['spec']['template']['spec']
+            elif d['kind'] == 'CronJob':
+                yield d['metadata']['name'], d['spec']['jobTemplate']['spec']['template']['spec']
+
+    def test_only_worker_gets_a_token_through_a_projected_volume(self):
+        specs = dict(self.pod_specs())
+        self.assertEqual(set(specs), {'api', 'worker', 'sandbox', 'db', 'backup'})
+        for name, spec in specs.items():
+            self.assertIs(spec.get('automountServiceAccountToken'), False, name)  # 자동 마운트는 어느 파드도 켜지 않는다
+            token_vols = [v['name'] for v in spec.get('volumes', []) if any('serviceAccountToken' in src for src in v.get('projected', {}).get('sources', []))]
+            if name != 'worker':
+                self.assertNotEqual(spec.get('serviceAccountName'), 'ai-sre-reader', name)
+                self.assertEqual(token_vols, [], name)
+                for c in spec['containers'] + spec.get('initContainers', []):
+                    self.assertNotIn(SA_DIR, [m['mountPath'] for m in c.get('volumeMounts', [])], (name, c['name']))
+        worker = specs['worker']
+        self.assertEqual(worker['serviceAccountName'], 'ai-sre-reader')
+        vols = {v['name']: v for v in worker['volumes']}
+        proj = [v for v in worker['volumes'] if 'projected' in v]
+        self.assertEqual([v['name'] for v in proj], ['kube-api'])
+        self.assertEqual(vols['kube-api']['projected']['sources'], [
+            {'serviceAccountToken': {'path': 'token', 'expirationSeconds': 3600}},  # audience 를 적지 않는다 = 기본(API 서버)
+            {'configMap': {'name': 'kube-root-ca.crt', 'items': [{'key': 'ca.crt', 'path': 'ca.crt'}]}},
+        ])
+        self.assertEqual(vols['kube-api']['projected']['defaultMode'], 0o444)
+        self.assertEqual(len(worker['containers']), 1)
+        self.assertNotIn('initContainers', worker)
+        mounts = [m for m in worker['containers'][0]['volumeMounts'] if m['mountPath'] == SA_DIR]
+        self.assertEqual(mounts, [{'name': 'kube-api', 'mountPath': SA_DIR, 'readOnly': True}])
+        self.assertEqual(secret_refs(worker), {'ai-sre-db', 'ai-sre-discord'})  # 토큰 때문에 Secret 이 늘지 않는다
+
+    def test_kube_api_egress_is_worker_only_and_opens_only_the_api_ports(self):
+        pol = self.policies['worker-kube-api-egress']['spec']
+        self.assertEqual((pol['podSelector'], pol['policyTypes']), ({'matchLabels': {'app': 'worker'}}, ['Egress']))
+        self.assertNotIn('ingress', pol)
+        opened = {(r['to'][0]['ipBlock']['cidr'], p['port']) for r in pol['egress'] for p in r['ports']}
+        self.assertEqual(opened, {('10.43.0.1/32', 443), ('192.168.5.15/32', 55902)})
+        for r in pol['egress']:
+            self.assertEqual(len(r['to']), 1)
+            self.assertTrue(all(set(p) == {'port', 'protocol'} and p['protocol'] == 'TCP' for p in r['ports']))
+            self.assertNotIn('except', r['to'][0]['ipBlock'])
+        # 평가기로: worker 는 두 주소의 그 포트로만 나간다
+        for addr, port in (KUBE_API_SERVICE, KUBE_API_NODE):
+            self.assertTrue(self.eg('worker', ('ip', addr), port), addr)
+            self.assertFalse(self.eg('worker', ('ip', addr), port, 'UDP'), addr)
+            self.assertFalse(self.eg('worker', ('ip', addr), port + 1), addr)
+        for addr, port in ((KUBE_API_SERVICE[0], 6443), (KUBE_API_NODE[0], 443), ('192.168.5.15', 22), ('192.168.5.2', 55902), ('192.168.5.2', 443), ('10.43.0.10', 443), ('10.43.0.1', 80)):
+            self.assertFalse(self.eg('worker', ('ip', addr), port), (addr, port))  # 맥 호스트 · 다른 서비스 · 다른 포트는 닫혀 있다
+        # 다른 파드는 어느 쪽 주소로도 나가지 못한다
+        for me in ('api', 'sandbox', 'db', 'backup', 'stranger'):
+            for addr, port in (KUBE_API_SERVICE, KUBE_API_NODE):
+                self.assertFalse(self.eg(me, ('ip', addr), port), (me, addr))
+        # 이 정책을 빼면 worker 도 못 나간다(이 정책이 유일한 길 — 인터넷 규칙은 사설 대역을 뺀다)
+        without = [d for d in self.docs if d['metadata']['name'] != 'worker-kube-api-egress']
+        for addr, port in (KUBE_API_SERVICE, KUBE_API_NODE):
+            self.assertFalse(self.eg('worker', ('ip', addr), port, docs=without), addr)
 
     def test_argo_application_never_prunes(self):
         out = subprocess.run(['yq', '-o=json', '-I=0', '.', 'argocd/apps/ai-sre.yaml'], cwd=ROOT, text=True, capture_output=True, check=True).stdout

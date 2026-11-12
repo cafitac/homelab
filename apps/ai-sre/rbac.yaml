@@ -1,6 +1,6 @@
 # ai-sre-reader — Argo CD Application 의 현재 동기화 리비전 · 건강 상태만 읽는다(설계 07 §3.5). 이력은 ai-sre 의 원장이 쌓는다.
 # 범위: argocd namespace 의 applications.argoproj.io 를 get · list · watch. 쓰기 · Secret · 다른 리소스 · 다른 namespace 없음.
-# 아직 어떤 파드도 이 계정을 쓰지 않는다 — DEPLOY_OBSERVE 를 연결하는 단위가 worker 의 serviceAccountName · 토큰 · k8s API egress 를 함께 연다.
+# 쓰는 파드는 worker 하나다 — serviceAccountName · projected 토큰(worker.yaml) · k8s API egress(networkpolicy.yaml 의 worker-kube-api-egress). 나머지 파드는 토큰이 없다.
 # Role · RoleBinding 은 argocd 에 있다. kustomization.yaml 의 namespace 변환이 unsetOnly 라 적어 둔 namespace 를 덮어쓰지 않는다.
 apiVersion: v1
 kind: ServiceAccount

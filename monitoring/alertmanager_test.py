@@ -1,6 +1,7 @@
 # Alertmanager 설정을 차트로 렌더해 검사한다(클러스터에 닿지 않는다). 실행: python3 -m unittest monitoring/alertmanager_test.py
 # 필요: helm · yq · docker(amtool 이 PATH 에 있으면 그것을 쓰고, 없으면 아래 고정 이미지). CI: .github/workflows/amtool.yml
 # 핵심 약속: ai-sre 경로는 맨 앞 + continue 라 Discord 로 가는 경보는 ai-sre 경로가 없을 때와 똑같다.
+# B9b: ai-sre 자신의 경보(AiSre.*)는 맨 끝 Discord 경로 하나로만 간다 — 그 밖의 경보 수신처 · Alertmanager CR 은 그대로다.
 import base64
 import hashlib
 import json
@@ -26,18 +27,30 @@ CASES = [
     ({'alertname': 'KubePodNotReady', 'severity': 'info', 'namespace': 'interview-coach'}, ['null']),
     ({'alertname': 'Watchdog', 'severity': 'none'}, ['null']),
     ({'alertname': 'InfoInhibitor', 'severity': 'none', 'namespace': 'judge-board'}, ['null']),
-    ({'alertname': 'AiSreWebhookErrors', 'severity': 'critical', 'namespace': 'ai-sre'}, ['null']),
+    # B9b — ai-sre 자신의 경보는 Discord 로만(ai-sre 웹훅으로는 돌아가지 않는다). info 이하는 여전히 버린다
+    ({'alertname': 'AiSreWebhookErrors', 'severity': 'warning', 'namespace': 'ai-sre'}, ['discord']),
+    ({'alertname': 'AiSreWorkerHeartbeatStale', 'severity': 'critical', 'namespace': 'ai-sre'}, ['discord']),
+    ({'alertname': 'AiSreTargetDown', 'severity': 'critical', 'namespace': 'ai-sre', 'job': 'worker'}, ['discord']),
+    ({'alertname': 'AiSreLedgerStale', 'severity': 'warning', 'namespace': 'ai-sre', 'target': 'judge-board'}, ['discord']),
+    ({'alertname': 'AiSreLedgerStale', 'severity': 'info', 'namespace': 'ai-sre'}, ['null']),
     ({'alertname': 'KubePodCrashLooping', 'severity': 'warning', 'namespace': 'ai-sre'}, ['null']),
     ({'alertname': 'AlertmanagerFailedToSendAlerts', 'severity': 'warning', 'namespace': 'monitoring', 'integration': 'webhook'}, ['null']),
 ]
 # ai-sre 경로 · 수신처를 뺀 설정(경로 · Discord 수신처 · 묶음 · 억제 · 템플릿)의 지문 — main 28de702 를 렌더해 얻은 값이다.
-# Discord 쪽을 일부러 바꿀 때만 고친다(검사 대상과 독립된 기준)
+# Discord 쪽을 일부러 바꿀 때만 고친다(검사 대상과 독립된 기준). B9b 의 AiSre 경로도 빼고 계산하므로 값은 그대로다
 BASELINE_SHA256 = '8dd2b917a9d205cb26704607dcf66d5d75b30796e4009b6bcc8842d0eaae4f4e'
+# 렌더된 Alertmanager CR 전체의 지문(main 361050d). 같으면 오퍼레이터가 파드를 다시 만들 일이 없다 — 설정 Secret 만 바뀐다
+ALERTMANAGER_CR_SHA256 = '7ceb9570d388931f2e1c40d89b51e6e43b64958858b5138bf91cb0a8bec20bf3'
+AI_SRE_OWN_ROUTE = {'receiver': 'discord', 'matchers': ['severity =~ "critical|warning"', 'alertname =~ "AiSre.*"']}
+
+
+def is_ai_sre_own(labels):
+    return labels['alertname'].startswith('AiSre')
 
 
 def without_ai_sre(config):
-    return dict(config, route=dict(config['route'], routes=[r for r in config['route']['routes'] if r['receiver'] != 'ai-sre']),
-                receivers=[r for r in config['receivers'] if r['name'] != 'ai-sre'])
+    keep = [r for r in config['route']['routes'] if r['receiver'] != 'ai-sre' and r != AI_SRE_OWN_ROUTE]
+    return dict(config, route=dict(config['route'], routes=keep), receivers=[r for r in config['receivers'] if r['name'] != 'ai-sre'])
 
 
 def fingerprint(config):
@@ -75,7 +88,8 @@ class AlertmanagerConfigTest(unittest.TestCase):
         secret = next(d for d in docs if d['kind'] == 'Secret' and 'alertmanager.yaml' in d.get('data', {}))
         cls.config_text = base64.b64decode(secret['data']['alertmanager.yaml']).decode()
         cls.config = to_json(cls.config_text)[0]
-        cls.spec = next(d for d in docs if d['kind'] == 'Alertmanager')['spec']
+        cls.alertmanager = next(d for d in docs if d['kind'] == 'Alertmanager')
+        cls.spec = cls.alertmanager['spec']
         (cls.tmp / 'cfg').mkdir()
         (cls.tmp / 'cfg/full.yaml').write_text(cls.config_text)
         (cls.tmp / 'cfg/without-ai-sre.yaml').write_text(json.dumps(without_ai_sre(cls.config), ensure_ascii=False))
@@ -118,8 +132,15 @@ class AlertmanagerConfigTest(unittest.TestCase):
         for key in ('volumes', 'volumeMounts', 'configMaps', 'storage', 'podMetadata'):
             self.assertNotIn(key, self.spec, key)
 
+    def test_alertmanager_cr_is_unchanged(self):
+        self.assertEqual(fingerprint(self.alertmanager), ALERTMANAGER_CR_SHA256)
+
     def test_everything_but_ai_sre_matches_the_frozen_baseline(self):
         self.assertEqual(fingerprint(without_ai_sre(self.config)), BASELINE_SHA256)
+
+    def test_ai_sre_own_route_is_present_once(self):
+        # without_ai_sre 가 빼는 것은 정확히 이 경로 하나다 — 모양이 바뀌면 지문 검사가 무엇을 빼는지 모르게 된다
+        self.assertEqual([r for r in self.config['route']['routes'] if r == AI_SRE_OWN_ROUTE], [AI_SRE_OWN_ROUTE])
 
     def test_routing_table(self):
         for labels, expected in CASES:
@@ -127,8 +148,12 @@ class AlertmanagerConfigTest(unittest.TestCase):
 
     def test_discord_routing_is_what_it_was_without_the_ai_sre_route(self):
         for labels, _ in CASES:
+            before = self.receivers('without-ai-sre.yaml', labels)
+            if is_ai_sre_own(labels):  # 새로 생긴 경보 — B9b 전에는 아무 데도 가지 않았다(경로 표가 지금 수신처를 본다)
+                self.assertEqual(before, ['null'], labels)
+                continue
             full = [r for r in self.receivers('full.yaml', labels) if r != 'ai-sre']
-            self.assertEqual(full or ['null'], self.receivers('without-ai-sre.yaml', labels), labels)
+            self.assertEqual(full or ['null'], before, labels)
 
     @unittest.skipIf(shutil.which('docker') is None, 'docker 없음')
     def test_alertmanager_starts_without_the_token_secret(self):

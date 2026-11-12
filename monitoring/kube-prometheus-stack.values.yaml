@@ -35,10 +35,13 @@ prometheus:
     ruleSelectorNilUsesHelmValues: false
 
 alertmanager:
-  # ⭐ 수신처는 Discord 웹훅 하나(사용자 결정 2026-10-29 「디스코드로 하고 웹 후크 발급받아놨어」 — 2026-10-05 「아직 연결하지말자」를 대체).
-  #    웹훅 주소는 저장소에 없다 — Secret alertmanager-discord(키 webhook-url)를 monitoring 에 먼저 만들어야 한다.
+  # ⭐ 사람에게 가는 수신처는 Discord 웹훅 하나(사용자 결정 2026-10-29 「디스코드로 하고 웹 후크 발급받아놨어」 — 2026-10-05 「아직 연결하지말자」를 대체).
+  #    그 밖에 ai-sre 웹훅이 경보 사본을 받는다(A11, 아래 routes 맨 앞).
+  #    웹훅 주소는 저장소에 없다 — Secret alertmanager-discord(키 webhook-url · ai-sre-token)를 monitoring 에 먼저 만들어야 한다.
   #    ⚠️ Secret 이 없으면 alertmanager 파드가 볼륨 마운트에서 막혀 뜨지 못한다. 만든 뒤에 이 변경을 반영한다.
   #    만들기: kubectl -n monitoring create secret generic alertmanager-discord --from-literal=webhook-url='<웹훅 주소>'
+  #    ⚠️ 웹훅 주소를 바꿀 때는 다시 만들지 말고 patch 한다 — 다시 만들면 키 ai-sre-token 이 사라져 ai-sre 로 가는 것만 조용히 끊긴다
+  #       (ai-sre-token 을 넣는 명령: PR #196 본문 · apps/ai-sre 의 Secret ai-sre-alertmanager 키 token 과 같은 값)
   config:
     global:
       resolve_timeout: 5m

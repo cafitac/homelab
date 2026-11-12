@@ -2,12 +2,14 @@
 # ⭐ Cloudflare Access 앱(정책 owner)이 이 호스트를 먼저 막고 있어야 한다 — *.cafitac.com 와일드카드가 이미 Traefik 으로 오므로
 #    Access 없이 이 Ingress 가 생기면 그 순간 관리 경로가 인터넷에 보인다(api 가 JWT 를 다시 검증하므로 열리지는 않지만, 벽은 둘이어야 한다).
 #    순서: Access 앱 → 비로그인 302 확인 → AUD 를 아래 ConfigMap 에 넣고 이 PR 병합(Argo) → 다시 302 확인 → 로그인 뒤 /admin
-# 급히 닫을 때: Cloudflare Access 앱 ai-sre 를 끄거나 정책을 비운다(클러스터에 닿지 않고 바로 막힌다). git 되돌리기만으로는 안 닫힌다 —
-#   argocd/apps/ai-sre.yaml 이 prune 을 꺼 두어 이 Ingress 가 남는다. 되돌린 뒤 kubectl -n ai-sre delete ingress admin 을 소유자가 직접 한다.
+# 급히 닫을 때: Cloudflare 의 cafitac.com 영역에 WAF 사용자 규칙 (http.host eq "ai-sre.cafitac.com") → Block 을 더한다(클러스터에 닿지 않고 바로 막힌다).
+#   ⚠️ Access 앱을 끄거나 지우지 않는다 — 그러면 Access 보호가 사라져 와일드카드 터널로 이 호스트가 그대로 열린다. 이미 받은 JWT 는 만료까지 유효하다.
+#   git 되돌리기만으로는 안 닫힌다 — argocd/apps/ai-sre.yaml 이 prune 을 꺼 두어 이 Ingress 가 남는다. 되돌린 뒤 kubectl -n ai-sre delete ingress admin 을 소유자가 직접 한다.
 # 이 호스트로는 관리 경로만 지난다(아래 경로 규칙이 전부). 웹훅(/v1/alertmanager/webhook) · /metrics · /healthz · /docs · /openapi.json 과
 #   sandbox 는 이 호스트로 닿지 않는다 — 규칙에 없는 경로는 Traefik 이 404 로 끝내고 api 까지 가지 않는다.
 # 경로는 Exact 와 「/ 로 끝나는 Prefix」만 쓴다. Traefik 의 Prefix 는 글자 단위 PathPrefix 라(/v1/kpi 가 /v1/kpix 에도 맞는다)
-#   끝의 / 가 경계 역할을 한다. 그래서 쿠버네티스의 요소 단위 의미든 Traefik 의 글자 단위 의미든 맞는 경로가 같다(manifest_test.py 가 둘 다 본다).
+#   끝의 / 가 경계 역할을 한다. 그래서 두 의미의 차이는 /admin/static(끝 / 없음, 요소 단위에서만 맞고 api 에서 404) 하나뿐이고
+#   어느 의미로 읽어도 관리 밖 경로는 맞지 않는다(manifest_test.py 가 둘 다 본다).
 # 메서드는 가리지 않는다: 이 경로들의 쓰기(POST /v1/incidents 수동 장애 · POST …/ack · PUT /v1/flags/{key})는 모두 소유자 관리 동작이고
 #   api 가 같은 Access 소유자 검사를 본문을 읽기 전에 한다. /v1/kpi 는 GET 뿐이다(지표 적재용 POST 는 없다).
 apiVersion: networking.k8s.io/v1

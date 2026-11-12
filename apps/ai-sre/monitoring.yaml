@@ -79,11 +79,14 @@ spec:
           annotations:
             summary: "ai-sre {{ $labels.channel }} 보고 {{ $value }} 건이 DEAD 가 됐다(30분 사이)"
             description: "보고가 끝내 나가지 않았다(재시도 소진 · 보냈는지 모름). outbox_message 의 DEAD 행을 본다"
-        # 4xx(토큰 불일치 401 · 크기 413) · 5xx 모두. ⚠️ 카운터 시계열은 그 코드의 첫 요청에 생겨 increase() 가 첫 1건은 세지 못한다 —
-        #   Alertmanager 는 group_interval(5m)마다 다시 보내므로 실패가 이어지면 다음 요청에서 잡힌다
+        # 4xx(토큰 불일치 401 · 크기 413) · 5xx 모두. 카운터 시계열은 그 코드의 첫 요청에 1 로 생겨(0 을 미리 내지 않는다) increase() 가
+        #   그 1건을 세지 못한다 — 둘째 줄이 「10분 전에는 없던 양수 시계열」(api 가 다시 떠 pod 가 바뀐 뒤의 첫 실패 포함)을 따로 잡는다
         - alert: AiSreWebhookErrors
           expr: |
             sum by (namespace, code) (increase(ai_sre_http_requests_total{namespace="ai-sre", route="/v1/alertmanager/webhook", code=~"4xx|5xx"}[10m])) > 0
+            or sum by (namespace, code) (
+              ai_sre_http_requests_total{namespace="ai-sre", route="/v1/alertmanager/webhook", code=~"4xx|5xx"} > 0
+              unless ai_sre_http_requests_total{namespace="ai-sre", route="/v1/alertmanager/webhook", code=~"4xx|5xx"} offset 10m)
           labels: { severity: warning }
           annotations:
             summary: "ai-sre 경보 접수 웹훅이 {{ $labels.code }} 로 답했다(10분 사이 {{ $value | humanize }} 건)"

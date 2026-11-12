@@ -64,6 +64,13 @@ CASES = [
     ([s('ai_sre_http_requests_total', '0+1x20', route='/v1/alertmanager/webhook', method='POST', code='4xx', **API),
       s('ai_sre_http_requests_total', '0+50x20', route='/v1/alertmanager/webhook', method='POST', code='2xx', **API)],
      [alert('AiSreWebhookErrors', '10m', {'code': '4xx'})]),
+    # 실패 한 번뿐: 시계열이 1 로 처음 생긴다(exporter 는 0 을 미리 내지 않는다) → 10분 동안 뜨고 그 뒤 해소
+    ([s('ai_sre_http_requests_total', '_x3 1x20', route='/v1/alertmanager/webhook', method='POST', code='4xx', **API)],
+     [alert('AiSreWebhookErrors', '2m'), alert('AiSreWebhookErrors', '5m', {'code': '4xx'}), alert('AiSreWebhookErrors', '15m')]),
+    # api 가 다시 떠 pod 가 바뀐 뒤의 첫 실패 — 옛 pod 의 시계열은 5분에 끊겼다
+    ([s('ai_sre_http_requests_total', '0+1x5', route='/v1/alertmanager/webhook', method='POST', code='5xx', job='api', pod='api-a'),
+      s('ai_sre_http_requests_total', '_x8 1x20', route='/v1/alertmanager/webhook', method='POST', code='5xx', job='api', pod='api-b')],
+     [alert('AiSreWebhookErrors', '17m', {'code': '5xx'}), alert('AiSreWebhookErrors', '20m')]),
     ([s('ai_sre_http_requests_total', '0+50x20', route='/v1/alertmanager/webhook', method='POST', code='2xx', **API),
       s('ai_sre_http_requests_total', '0+1x20', route='/healthz', method='GET', code='5xx', **API)], [alert('AiSreWebhookErrors', '10m')]),
     ([s('ai_sre_pipeline_collect_success', '1x5 0x20', **API)],
@@ -93,6 +100,7 @@ class MonitoringTest(unittest.TestCase):
         [cls.monitor] = [d for d in cls.docs if d['kind'] == 'PodMonitor']
         cls.rules = {r['alert']: r for g in cls.rule['spec']['groups'] for r in g['rules']}
         cls.tmp = Path(tempfile.mkdtemp())
+        cls.tmp.chmod(0o755)  # promtool 이미지는 nobody 로 돈다 — mkdtemp 의 0700 이면 Linux 러너에서 못 읽는다
         (cls.tmp / 'rules.yaml').write_text(json.dumps({'groups': cls.rule['spec']['groups']}, ensure_ascii=False))
         # 단위 시험은 뜨는 때 · 라벨만 본다 — 문구(annotations)를 뺀 사본. 문구의 템플릿 문법은 check rules 가 본다
         logic = [dict(g, rules=[{k: v for k, v in r.items() if k != 'annotations'} for r in g['rules']]) for g in cls.rule['spec']['groups']]

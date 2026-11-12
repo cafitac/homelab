@@ -17,7 +17,8 @@ spec:
       defaultRequest: { cpu: 50m, memory: 64Mi }
       default: { cpu: 500m, memory: 512Mi }
 ---
-# 상한 합의 어림값이다(실측 아님): db 1Gi · 백업 256Mi 는 매니페스트에 적힌 값이고, api · worker · sandbox · scorer 는 아직 없다(A10b).
+# 상한 합의 어림값이다(실측 아님): 메모리 상한 db 1Gi · 백업 256Mi · api 512Mi · worker 1Gi · sandbox 1.5Gi = 약 4.3Gi(scorer 는 아직 없다).
+# Recreate 배포라 롤아웃 중에 겹쳐 뜨지 않는다.
 # 실제 사용량을 본 뒤 줄이거나 늘린다. 저장소는 db 10Gi + 백업 5Gi 에 여유 5Gi.
 apiVersion: v1
 kind: ResourceQuota

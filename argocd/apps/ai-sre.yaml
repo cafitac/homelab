@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-sre
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cafitac/homelab.git
+    targetRevision: main
+    path: apps/ai-sre
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    # ⚠️ prune 끔 — db · backups PVC 가 실수로 지워지면 데이터가 사라진다. 지울 때는 사람이 한다
+    # 효과 flag 는 DB 의 runtime_flag 에서 모두 OFF 로 시작한다(Application 은 flag 를 건드리지 않는다)
+    automated: { prune: false, selfHeal: true }

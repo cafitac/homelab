@@ -1,0 +1,60 @@
+# worker — 작업 큐(DIAGNOSE · SWEEP · CHECK_RESOLVE)를 돌리고 /metrics 를 8080 에서 내보낸다. 이미지는 api 와 같고 명령만 다르다.
+# 비밀을 쥔 쪽은 이 파드다(DB · Discord 웹훅). 모델은 여기서 돌지 않는다 — 진단은 sandbox Service(http://sandbox.ai-sre.svc:8080)에 맡긴다(설계 07 §6).
+# 효과 flag 는 DB 에서 기본 OFF 다. 봉쇄(containment)는 replicas 를 0 으로 내리는 것(소유자).
+# k8s API 에 닿지 않는다: ServiceAccount 토큰을 마운트하지 않고, DEPLOY_OBSERVE(Argo 읽기)는 아직 연결되지 않았다.
+# /metrics 의 들어오는 길은 아직 열지 않았다(networkpolicy.yaml — B9a 가 monitoring 의 Prometheus 에서만 연다). Ingress 는 없다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: worker }
+  template:
+    metadata:
+      labels: { app: worker }
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      # SIGTERM 뒤 지금 하던 작업 하나를 끝내고 멈춘다. 진단 하나가 최대 300 초 걸리므로 그보다 길게 준다
+      terminationGracePeriodSeconds: 330
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: worker
+          image: ai-sre
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "ai_sre.worker"]
+          env:
+            - { name: AI_SRE_DATABASE_URL, value: "host=db port=5432 connect_timeout=5" }
+            - { name: PGUSER, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_USER } } }
+            - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_PASSWORD } } }
+            - { name: PGDATABASE, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_DB } } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          ports: [{ containerPort: 8080, name: metrics }]
+          # 작업 하나가 길게 걸려도 죽이지 않도록 liveness 는 두지 않는다(멈춘 진단은 AiSreDiagnosisStuck 이 잡는다)
+          readinessProbe:
+            httpGet: { path: /metrics, port: 8080 }
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            # 파일 이름 webhook-url. 보낼 때마다 다시 읽는다. notify_discord_enabled 가 OFF 인 동안은 보내지 않는다
+            - { name: discord, mountPath: /var/run/secrets/ai-sre/discord, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+        - name: discord
+          secret:
+            secretName: ai-sre-discord
+            items: [{ key: webhook-url, path: webhook-url }]

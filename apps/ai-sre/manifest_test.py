@@ -82,6 +82,23 @@ def allowed(docs, direction, me, other, port, proto='TCP'):
     return not isolated
 
 
+def secret_refs(o):
+    """Secret 을 가리키는 모든 길: env 의 secretKeyRef · envFrom 의 secretRef · secret 볼륨 · projected 의 secret."""
+    refs = set()
+    if isinstance(o, dict):
+        for key in ('secretKeyRef', 'secretRef'):
+            if key in o:
+                refs.add(o[key]['name'])
+        if 'secret' in o:
+            refs.add(o['secret'].get('secretName') or o['secret'].get('name'))
+        for v in o.values():
+            refs |= secret_refs(v)
+    elif isinstance(o, list):
+        for v in o:
+            refs |= secret_refs(v)
+    return refs
+
+
 class ManifestTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -92,6 +109,9 @@ class ManifestTest(unittest.TestCase):
         js = subprocess.run(['yq', '-o=json', '-I=0', '.'], input=out, text=True, capture_output=True, check=True).stdout
         cls.docs = [json.loads(line) for line in js.splitlines() if line.strip()]
         cls.policies = {d['metadata']['name']: d for d in cls.docs if d['kind'] == 'NetworkPolicy'}
+
+    def workload(self, name):
+        return next(d for d in self.docs if d['kind'] == 'Deployment' and d['metadata']['name'] == name)
 
     def eg(self, me, other, port, proto='TCP', docs=None):
         return allowed(docs or self.docs, 'Egress', {'app': me}, other, port, proto)
@@ -106,18 +126,9 @@ class ManifestTest(unittest.TestCase):
                 self.assertEqual(d['metadata'].get('namespace'), 'ai-sre', d['metadata']['name'])
 
     def test_secret_refs_are_names_only(self):
-        refs = set()
-        def walk(o):
-            if isinstance(o, dict):
-                if 'secretKeyRef' in o:
-                    refs.add(o['secretKeyRef']['name'])
-                for v in o.values():
-                    walk(v)
-            elif isinstance(o, list):
-                for v in o:
-                    walk(v)
-        walk(self.docs)
-        self.assertEqual(refs, {'ai-sre-db'})
+        self.assertEqual(secret_refs(self.docs), {'ai-sre-db', 'ai-sre-alertmanager', 'ai-sre-discord', 'ai-sre-claude'})
+        self.assertEqual(secret_refs(self.workload('api')), {'ai-sre-db', 'ai-sre-alertmanager'})
+        self.assertEqual(secret_refs(self.workload('worker')), {'ai-sre-db', 'ai-sre-discord'})
 
     def test_default_deny_is_empty_and_no_rule_opens_all_peers(self):
         deny = self.policies['default-deny']['spec']
@@ -171,7 +182,8 @@ class ManifestTest(unittest.TestCase):
         self.assertTrue(self.eg('worker', KUBE_DNS, 53, 'UDP'))  # 다른 파드의 DNS 는 그대로
 
     def test_sandbox_takes_only_worker_and_db_takes_only_its_clients(self):
-        self.assertTrue(self.ing('sandbox', pod('worker'), 9999))
+        self.assertTrue(self.ing('sandbox', pod('worker'), 8080))
+        self.assertFalse(self.ing('sandbox', pod('worker'), 9999))  # sandbox 가 받는 포트만
         for src in (pod('api'), pod('db'), pod('backup'), pod('other'), pod('worker', {'kubernetes.io/metadata.name': 'monitoring'})):
             self.assertFalse(self.ing('sandbox', src, 9999), src)
         for ok in ('api', 'worker', 'backup'):
@@ -195,7 +207,8 @@ class ManifestTest(unittest.TestCase):
             self.assertTrue(self.eg('worker', ('pod', mon, {'app': 'x'}), port), port)
         self.assertFalse(self.eg('worker', ('pod', mon, {'app': 'x'}), 8080))
         self.assertTrue(self.eg('worker', pod('db'), 5432))
-        self.assertTrue(self.eg('worker', pod('sandbox'), 1234))
+        self.assertTrue(self.eg('worker', pod('sandbox'), 8080))
+        self.assertFalse(self.eg('worker', pod('sandbox'), 1234))
         self.assertTrue(self.eg('worker', ('ip', '140.82.112.3'), 443))
         for a in ['10.43.0.1', '192.168.5.2', '172.16.0.1', '169.254.169.254', '100.64.0.1']:
             self.assertFalse(self.eg('worker', ('ip', a), 443), a)
@@ -300,6 +313,93 @@ head -c 100 /dev/zero > "$out"
                 for line in f.read_text().splitlines():
                     if line.strip().startswith('schedule:'):
                         self.assertNotEqual(line.split('"')[1], mine, f'{f} 와 같은 분')
+
+    # --- A10b: api · worker · sandbox 와 Argo CD Application ---
+    def test_sandbox_holds_no_secret_but_the_claude_token(self):
+        sb = self.workload('sandbox')
+        self.assertEqual(secret_refs(sb), {'ai-sre-claude'})
+        spec = sb['spec']['template']['spec']
+        c = spec['containers'][0]
+        self.assertEqual([e for e in c['env'] if 'valueFrom' in e],
+                         [{'name': 'CLAUDE_CODE_OAUTH_TOKEN', 'valueFrom': {'secretKeyRef': {'name': 'ai-sre-claude', 'key': 'oauth-token'}}}])
+        self.assertNotIn('envFrom', c)
+        self.assertEqual(len(spec['containers']), 1)
+        self.assertNotIn('initContainers', spec)
+        for other in ('api', 'worker'):
+            self.assertNotIn('ai-sre-claude', secret_refs(self.workload(other)), other)  # 토큰은 sandbox 에만
+        # 쓸 수 있는 볼륨은 /work 의 emptyDir 하나, 나머지는 선택적 ConfigMap(지문, 비밀 아님) 뿐
+        vols = {v['name']: v for v in spec['volumes']}
+        self.assertEqual(set(vols), {'work', 'fingerprints'})
+        self.assertIn('emptyDir', vols['work'])
+        self.assertEqual(set(vols['fingerprints']) - {'name'}, {'configMap'})
+        mounts = {m['mountPath']: m for m in c['volumeMounts']}
+        self.assertEqual(mounts['/work']['name'], 'work')
+        self.assertTrue(mounts['/etc/ai-sre']['readOnly'])
+
+    def test_no_service_account_token_and_read_only_root_everywhere(self):
+        uids = {'api': 10001, 'worker': 10001, 'sandbox': 10002}
+        for name, uid in uids.items():
+            t = self.workload(name)['spec']['template']
+            spec = t['spec']
+            self.assertEqual(t['metadata']['labels'], {'app': name})
+            self.assertIs(spec['automountServiceAccountToken'], False, name)
+            self.assertIs(spec['enableServiceLinks'], False, name)
+            self.assertEqual({k: spec['securityContext'].get(k) for k in ('runAsNonRoot', 'runAsUser')}, {'runAsNonRoot': True, 'runAsUser': uid}, name)
+            for c in spec['containers'] + spec.get('initContainers', []):
+                sc = c['securityContext']
+                self.assertIs(sc['readOnlyRootFilesystem'], True, (name, c['name']))
+                self.assertEqual((sc['allowPrivilegeEscalation'], sc['capabilities']), (False, {'drop': ['ALL']}), (name, c['name']))
+                self.assertNotIn('runAsUser', sc)  # 파드 값을 덮어쓰지 않는다
+        sa = next(d for d in self.docs if d['kind'] == 'ServiceAccount' and d['metadata']['name'] == 'sandbox')
+        self.assertIs(sa['automountServiceAccountToken'], False)
+        sb = self.workload('sandbox')['spec']['template']['spec']
+        self.assertEqual(sb['serviceAccountName'], 'sandbox')
+        for key in ('shareProcessNamespace', 'hostPID', 'hostIPC', 'hostNetwork'):
+            self.assertIs(sb[key], False, key)  # 실행 뒤 같은 uid 를 모두 죽이는 정리의 전제
+        self.assertNotIn('command', sb['containers'][0])  # PID 1 은 이미지의 tini
+        self.assertNotIn('args', sb['containers'][0])
+
+    def test_sandbox_resolves_only_pinned_anthropic_addresses(self):
+        spec = self.workload('sandbox')['spec']['template']['spec']
+        self.assertEqual((spec['dnsPolicy'], spec['dnsConfig']), ('None', {'nameservers': ['127.0.0.1']}))
+        names = set()
+        for alias in spec['hostAliases']:
+            a = ipaddress.ip_address(alias['ip'])
+            self.assertTrue(any(a in ipaddress.ip_network(n) for n in ANTHROPIC), alias)
+            self.assertTrue(self.eg('sandbox', ('ip', alias['ip']), 443), alias)
+            names |= set(alias['hostnames'])
+        self.assertIn('api.anthropic.com', names)
+        env = {e['name']: e.get('value') for e in spec['containers'][0]['env']}
+        for flag in ('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'DISABLE_AUTOUPDATER'):
+            self.assertEqual(env.get(flag), '1', flag)
+
+    def test_entrypoints_ports_and_services(self):
+        api, worker, sb = (self.workload(n)['spec']['template']['spec'] for n in ('api', 'worker', 'sandbox'))
+        self.assertEqual(worker['containers'][0]['command'], ['python', '-m', 'ai_sre.worker'])
+        self.assertEqual(api['initContainers'][0]['command'], ['python', '-m', 'ai_sre.db'])
+        self.assertNotIn('command', api['containers'][0])
+        self.assertGreater(worker['terminationGracePeriodSeconds'], 300)  # 진단 하나(최대 300 초)가 끝날 시간
+        for spec in (api, worker, sb):
+            self.assertEqual([p['containerPort'] for p in spec['containers'][0]['ports']], [8080])
+        services = {d['metadata']['name']: d['spec'] for d in self.docs if d['kind'] == 'Service'}
+        for name in ('api', 'sandbox'):
+            self.assertEqual((services[name]['selector'], services[name]['ports'][0]['port'], services[name]['ports'][0]['targetPort']), ({'app': name}, 8080, 8080))
+            self.assertNotIn('type', services[name])  # ClusterIP
+        self.assertNotIn('worker', services)
+        kinds = {d['kind'] for d in self.docs}
+        self.assertFalse(kinds & {'Ingress', 'IngressRoute', 'ServiceMonitor'})  # /metrics 는 클러스터 안에서만(소유자 결정)
+        for d in self.docs:
+            for c in d.get('spec', {}).get('template', {}).get('spec', {}).get('containers', []):
+                if c['image'].startswith('ai-sre'):
+                    name, _, tag = c['image'].partition(':')
+                    self.assertRegex(tag, r'^[0-9a-f]{12}$', c['image'])
+                    self.assertEqual(c['imagePullPolicy'], 'IfNotPresent')
+
+    def test_argo_application_never_prunes(self):
+        out = subprocess.run(['yq', '-o=json', '-I=0', '.', 'argocd/apps/ai-sre.yaml'], cwd=ROOT, text=True, capture_output=True, check=True).stdout
+        app = json.loads(out)
+        self.assertEqual(app['spec']['source']['path'], 'apps/ai-sre')
+        self.assertIs(app['spec']['syncPolicy']['automated']['prune'], False)  # db · backups PVC
 
 
 if __name__ == '__main__':

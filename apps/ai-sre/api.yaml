@@ -1,0 +1,81 @@
+# api — Alertmanager 웹훅(POST /v1/alertmanager/webhook) · /healthz · /metrics 를 8080 에서 받는다(cafitac/ai-sre 의 docker/api.Dockerfile).
+# 들어오는 길은 networkpolicy.yaml 의 api-ingress(monitoring 의 Alertmanager · Prometheus 만)이다. Ingress 는 없다 — /metrics 는 클러스터 안에서만 수집한다(소유자 결정 2026-11-12).
+# 스키마 마이그레이션은 initContainer(python -m ai_sre.db)가 advisory lock 아래 앞으로만 적용한 뒤 api 가 뜬다(설계 07 §13).
+# DB 접속: AI_SRE_DATABASE_URL 은 libpq 키워드 문자열이고 사용자 · 비밀번호 · DB 이름은 PG* 환경변수(Secret ai-sre-db)에서 libpq 가 읽는다 —
+#   비밀번호를 URL 에 넣지 않으므로 특수문자를 이스케이프할 일이 없다.
+# 관리 화면의 Cloudflare Access 설정(AI_SRE_ACCESS_*)은 주지 않는다 — 없으면 관리 경로는 모두 거부된다(관리 화면 Ingress 는 B7b).
+# 효과 flag 는 모두 DB 의 runtime_flag 에 있고 기본값이 OFF 다. 이 매니페스트는 어떤 flag 도 켜지 않는다(환경변수 토글 없음, AC-24).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 1
+  # 옛 이미지는 새 스키마를 거부하므로 겹쳐 띄우지 않는다
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: api }
+  template:
+    metadata:
+      labels: { app: api }
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        - name: migrate
+          image: ai-sre
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "ai_sre.db"]
+          env: &dbenv
+            - { name: AI_SRE_DATABASE_URL, value: "host=db port=5432 connect_timeout=5" }
+            - { name: PGUSER, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_USER } } }
+            - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_PASSWORD } } }
+            - { name: PGDATABASE, valueFrom: { secretKeyRef: { name: ai-sre-db, key: POSTGRES_DB } } }
+          securityContext: &csc
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+      containers:
+        - name: api
+          image: ai-sre
+          imagePullPolicy: IfNotPresent
+          env: *dbenv
+          securityContext: *csc
+          ports: [{ containerPort: 8080, name: http }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            # 파일 이름 token. Alertmanager 가 같은 값을 credentials_file 로 보낸다(A11). 요청마다 다시 읽어 교체가 재시작 없이 적용된다
+            - { name: alertmanager-token, mountPath: /var/run/secrets/ai-sre/alertmanager, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+        - name: alertmanager-token
+          secret:
+            secretName: ai-sre-alertmanager
+            items: [{ key: token, path: token }]
+---
+# Alertmanager 웹훅 주소: http://api.ai-sre.svc:8080/v1/alertmanager/webhook (A11 이 receiver 를 더한다)
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector: { app: api }
+  ports: [{ name: http, port: 8080, targetPort: 8080 }]

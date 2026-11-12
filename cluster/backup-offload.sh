@@ -25,6 +25,7 @@ TARGETS=(
   "interview-coach:$OUT/interview-coach"
   "ppt:$OUT/ppt"
   "skills:$OUT/skills"
+  "ai-sre:$OUT/ai-sre"
 )
 
 log() { echo "$(date '+%F %T') $*"; }

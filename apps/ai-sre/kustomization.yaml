@@ -1,0 +1,13 @@
+# ai-sre — 알림 → 장애 → 격리 진단 → Discord 보고(비공개 저장소 cafitac/ai-sre). 설계: 07 §13.
+# 이 단계(A10a)는 namespace · 격리 정책 · DB · 백업까지다. api · worker · sandbox 와 Argo CD Application 은 A10b 가 더한다 —
+# Application 이 생기기 전에는 아무것도 배포되지 않는다.
+# 비밀값: Secret ai-sre-db(POSTGRES_USER · POSTGRES_PASSWORD · POSTGRES_DB) — 저장소에 없다. 소유자가 머지 전에 만든다.
+# ⚠️ A10b 의 Application 은 prune 을 끈다(db · backups PVC).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ai-sre
+resources:
+  - namespace.yaml
+  - networkpolicy.yaml
+  - db.yaml
+  - backup.yaml

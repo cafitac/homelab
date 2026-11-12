@@ -1,0 +1,33 @@
+# ai-sre — 알림을 받아 장애 하나로 묶고, 격리된 sandbox 에서 읽기 전용으로 진단해 Discord 로 보고하는 서비스(비공개 저장소 cafitac/ai-sre).
+# 이 namespace 는 platform/components/isolation 을 쓰지 않는다 — 그 컴포넌트의 allow-same-namespace · allow-from-traefik 이
+# 모든 파드로 들어오는 길을 열어 sandbox 의 「worker 에서만 받는다」(설계 07 §6)를 깨기 때문이다. 정책은 networkpolicy.yaml 에 따로 있다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-sre
+---
+# 상한을 적지 않은 컨테이너에도 기본값을 준다(platform/components/isolation/limitrange.yaml 과 같은 값).
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 50m, memory: 64Mi }
+      default: { cpu: 500m, memory: 512Mi }
+---
+# 상한 합의 어림값이다(실측 아님): db 1Gi · 백업 256Mi 는 매니페스트에 적힌 값이고, api · worker · sandbox · scorer 는 아직 없다(A10b).
+# 실제 사용량을 본 뒤 줄이거나 늘린다. 저장소는 db 10Gi + 백업 5Gi 에 여유 5Gi.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "8"
+    limits.memory: 8Gi
+    requests.storage: 20Gi
+    persistentvolumeclaims: "3"

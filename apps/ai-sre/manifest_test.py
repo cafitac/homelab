@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ANTHROPIC = {'160.79.104.0/23', '153.61.224.0/22', '2607:6bc0::/48'}  # https://platform.claude.com/docs/en/api/ip-addresses
 NS = {'kubernetes.io/metadata.name': 'ai-sre'}
 KUBE_API_SERVICE = ('10.43.0.1', 443)  # kubernetes Service 의 ClusterIP
-KUBE_API_NODE = ('192.168.5.15', 55902)  # DNAT 뒤 엔드포인트(colima VM · k3s API 포트, cluster/up.sh). 노드 IP 는 가정 — networkpolicy.yaml 주석
+KUBE_API_NODE = ('192.168.5.10', 55902)  # DNAT 뒤 엔드포인트(colima VM · k3s API 포트). 2026-11-12 소유자 확인 — networkpolicy.yaml 주석
 SA_DIR = '/var/run/secrets/kubernetes.io/serviceaccount'
 KUBE_DNS = ('pod', {'kubernetes.io/metadata.name': 'kube-system'}, {'k8s-app': 'kube-dns'})
 
@@ -460,7 +460,7 @@ head -c 100 /dev/zero > "$out"
         self.assertEqual((pol['podSelector'], pol['policyTypes']), ({'matchLabels': {'app': 'worker'}}, ['Egress']))
         self.assertNotIn('ingress', pol)
         opened = {(r['to'][0]['ipBlock']['cidr'], p['port']) for r in pol['egress'] for p in r['ports']}
-        self.assertEqual(opened, {('10.43.0.1/32', 443), ('192.168.5.15/32', 55902)})
+        self.assertEqual(opened, {('10.43.0.1/32', 443), ('192.168.5.10/32', 55902)})
         for r in pol['egress']:
             self.assertEqual(len(r['to']), 1)
             self.assertTrue(all(set(p) == {'port', 'protocol'} and p['protocol'] == 'TCP' for p in r['ports']))
@@ -470,7 +470,7 @@ head -c 100 /dev/zero > "$out"
             self.assertTrue(self.eg('worker', ('ip', addr), port), addr)
             self.assertFalse(self.eg('worker', ('ip', addr), port, 'UDP'), addr)
             self.assertFalse(self.eg('worker', ('ip', addr), port + 1), addr)
-        for addr, port in ((KUBE_API_SERVICE[0], 6443), (KUBE_API_NODE[0], 443), ('192.168.5.15', 22), ('192.168.5.2', 55902), ('192.168.5.2', 443), ('10.43.0.10', 443), ('10.43.0.1', 80)):
+        for addr, port in ((KUBE_API_SERVICE[0], 6443), (KUBE_API_NODE[0], 443), ('192.168.5.10', 22), ('192.168.5.15', 55902), ('192.168.5.2', 55902), ('192.168.5.2', 443), ('10.43.0.10', 443), ('10.43.0.1', 80)):
             self.assertFalse(self.eg('worker', ('ip', addr), port), (addr, port))  # 맥 호스트 · 다른 서비스 · 다른 포트는 닫혀 있다
         # 다른 파드는 어느 쪽 주소로도 나가지 못한다
         for me in ('api', 'sandbox', 'db', 'backup', 'stranger'):

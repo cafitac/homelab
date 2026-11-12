@@ -185,7 +185,7 @@ class ManifestTest(unittest.TestCase):
         self.assertTrue(self.ing('sandbox', pod('worker'), 8080))
         self.assertFalse(self.ing('sandbox', pod('worker'), 9999))  # sandbox 가 받는 포트만
         for src in (pod('api'), pod('db'), pod('backup'), pod('other'), pod('worker', {'kubernetes.io/metadata.name': 'monitoring'})):
-            self.assertFalse(self.ing('sandbox', src, 9999), src)
+            self.assertFalse(self.ing('sandbox', src, 8080), src)  # 열린 포트에서도 worker 말고는 못 들어온다
         for ok in ('api', 'worker', 'backup'):
             self.assertTrue(self.ing('db', pod(ok), 5432), ok)
         for bad in (pod('sandbox'), pod('other')):

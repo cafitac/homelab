@@ -35,10 +35,13 @@ prometheus:
     ruleSelectorNilUsesHelmValues: false
 
 alertmanager:
-  # ⭐ 수신처는 Discord 웹훅 하나(사용자 결정 2026-10-29 「디스코드로 하고 웹 후크 발급받아놨어」 — 2026-10-05 「아직 연결하지말자」를 대체).
-  #    웹훅 주소는 저장소에 없다 — Secret alertmanager-discord(키 webhook-url)를 monitoring 에 먼저 만들어야 한다.
+  # ⭐ 사람에게 가는 수신처는 Discord 웹훅 하나(사용자 결정 2026-10-29 「디스코드로 하고 웹 후크 발급받아놨어」 — 2026-10-05 「아직 연결하지말자」를 대체).
+  #    그 밖에 ai-sre 웹훅이 경보 사본을 받는다(A11, 아래 routes 맨 앞).
+  #    웹훅 주소는 저장소에 없다 — Secret alertmanager-discord(키 webhook-url · ai-sre-token)를 monitoring 에 먼저 만들어야 한다.
   #    ⚠️ Secret 이 없으면 alertmanager 파드가 볼륨 마운트에서 막혀 뜨지 못한다. 만든 뒤에 이 변경을 반영한다.
   #    만들기: kubectl -n monitoring create secret generic alertmanager-discord --from-literal=webhook-url='<웹훅 주소>'
+  #    ⚠️ 웹훅 주소를 바꿀 때는 다시 만들지 말고 patch 한다 — 다시 만들면 키 ai-sre-token 이 사라져 ai-sre 로 가는 것만 조용히 끊긴다
+  #       (ai-sre-token 을 넣는 명령: PR #196 본문 · apps/ai-sre 의 Secret ai-sre-alertmanager 키 token 과 같은 값)
   config:
     global:
       resolve_timeout: 5m
@@ -50,6 +53,16 @@ alertmanager:
       group_interval: 5m
       repeat_interval: 12h
       routes:
+        # ⭐ ai-sre(설계 07 §13) — 맨 앞 + continue: true 라 경보의 사본만 받고, 아래 경로(Discord 포함)는 이 경로가 없을 때와 똑같이 고른다.
+        #    받는 범위: critical · warning 전부(대상 판별은 ai-sre 가 한다 — 대상 밖이면 감사 기록만 남긴다).
+        #    빼는 것: 하트비트 · 억제용, ai-sre 자신의 경보(AiSre.* · namespace ai-sre), Alertmanager.*(웹훅 실패 경보가 실패하는 웹훅으로 가는 고리)
+        #    검사: monitoring/alertmanager_test.py(CI .github/workflows/amtool.yml)
+        - receiver: ai-sre
+          continue: true
+          matchers:
+            - severity =~ "critical|warning"
+            - alertname !~ "AiSre.*|Alertmanager.*|Watchdog|InfoInhibitor"
+            - namespace != "ai-sre"
         # 하트비트 · 차트의 억제용 경보는 어디로도 보내지 않는다
         - receiver: "null"
           matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
@@ -79,6 +92,17 @@ alertmanager:
               {{ end -}}
               시작 {{ .StartsAt | tz "Asia/Seoul" | date "2006-01-02 15:04:05" }} KST{{ if eq .Status "resolved" }} · 해소 {{ .EndsAt | tz "Asia/Seoul" | date "2006-01-02 15:04:05" }} KST{{ end }}
               {{ end }}
+      # ai-sre api 의 웹훅(apps/ai-sre/api.yaml). 토큰은 api 가 읽는 Secret ai-sre/ai-sre-alertmanager(키 token)와 같은 값 —
+      # 소유자가 이미 마운트된 Secret alertmanager-discord 의 키 ai-sre-token 으로 복사한다(아래 alertmanagerSpec 주석). 파일은 요청마다 다시 읽힌다
+      - name: ai-sre
+        webhook_configs:
+          - url: http://api.ai-sre.svc:8080/v1/alertmanager/webhook
+            send_resolved: true
+            max_alerts: 50
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/secrets/alertmanager-discord/ai-sre-token
   ingress:
     enabled: true
     ingressClassName: traefik
@@ -86,7 +110,10 @@ alertmanager:
     paths: [/]
   alertmanagerSpec:
     externalUrl: https://alertmanager.cafitac.com
-    # /etc/alertmanager/secrets/alertmanager-discord/webhook-url 로 마운트된다
+    # /etc/alertmanager/secrets/alertmanager-discord/webhook-url 로 마운트된다.
+    # 같은 Secret 의 키 ai-sre-token 이 ai-sre 웹훅 토큰이다(receivers 의 ai-sre). 새 볼륨 · Secret 을 달지 않는 이유: 파드 템플릿이 바뀌면
+    # 하나뿐인 파드가 다시 뜨고, 저장소가 emptyDir 라 silence · 알림 기록이 사라져 Discord 로 다시 가거나 가려 둔 경보가 나간다.
+    # 키만 더하면 kubelet 이 재시작 없이 파일을 넣는다. 키가 없으면 ai-sre 로 보내기만 실패한다(Discord 는 그대로)
     secrets: [alertmanager-discord]
     resources:
       requests: { cpu: 20m, memory: 64Mi }

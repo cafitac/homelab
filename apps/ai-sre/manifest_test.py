@@ -122,8 +122,22 @@ class ManifestTest(unittest.TestCase):
     def test_everything_is_in_ai_sre_and_no_secret_is_committed(self):
         self.assertNotIn('Secret', {d['kind'] for d in self.docs})
         for d in self.docs:
-            if d['kind'] != 'Namespace':
+            if d['kind'] != 'Namespace' and (d['kind'], d['metadata']['name']) not in {('Role', 'ai-sre-reader'), ('RoleBinding', 'ai-sre-reader')}:
                 self.assertEqual(d['metadata'].get('namespace'), 'ai-sre', d['metadata']['name'])
+
+    def test_argo_reader_only_reads_applications_in_argocd(self):
+        role = next(d for d in self.docs if d['kind'] == 'Role' and d['metadata']['name'] == 'ai-sre-reader')
+        self.assertEqual(role['metadata']['namespace'], 'argocd')
+        self.assertEqual(role['rules'], [{'apiGroups': ['argoproj.io'], 'resources': ['applications'], 'verbs': ['get', 'list', 'watch']}])
+        binding = next(d for d in self.docs if d['kind'] == 'RoleBinding')
+        self.assertEqual(binding['metadata']['namespace'], 'argocd')
+        self.assertEqual(binding['roleRef'], {'apiGroup': 'rbac.authorization.k8s.io', 'kind': 'Role', 'name': 'ai-sre-reader'})
+        self.assertEqual(binding['subjects'], [{'kind': 'ServiceAccount', 'name': 'ai-sre-reader', 'namespace': 'ai-sre'}])
+        self.assertEqual({d['kind'] for d in self.docs} & {'ClusterRole', 'ClusterRoleBinding'}, set())
+        sa = next(d for d in self.docs if d['kind'] == 'ServiceAccount' and d['metadata']['name'] == 'ai-sre-reader')
+        self.assertIs(sa['automountServiceAccountToken'], False)
+        for name in ('api', 'worker', 'sandbox'):  # 아직 어느 파드도 이 계정을 쓰지 않는다
+            self.assertNotEqual(self.workload(name)['spec']['template']['spec'].get('serviceAccountName'), 'ai-sre-reader', name)
 
     def test_secret_refs_are_names_only(self):
         self.assertEqual(secret_refs(self.docs), {'ai-sre-db', 'ai-sre-alertmanager', 'ai-sre-discord', 'ai-sre-claude'})

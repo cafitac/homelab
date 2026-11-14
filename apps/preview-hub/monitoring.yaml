@@ -1,0 +1,49 @@
+# 공개 probe 는 Cloudflare Access · 터널만 확인하므로 hub 프로세스 장애는 별도로 감시한다.
+# hub 의 /metrics 에서 phub_up · 환경 상태 · 실행 중 작업의 최장 시간 · GC 성공 시각/실패 횟수를 수집한다.
+# 지표 포트 9100 은 Service/Ingress 에 노출하지 않고 PodMonitor 가 파드에서 직접 읽는다.
+# 지표를 제공하는 hub 이미지와 함께 또는 그 이후에 적용한다 — 먼저 적용하면 PreviewHubDown 이 발화한다.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: hub
+spec:
+  # jobLabel 미지정 시 job = <PodMonitor namespace>/<name>, 즉 preview-hub/hub.
+  selector:
+    matchLabels: { app: hub }
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 60s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: preview-hub
+spec:
+  groups:
+    - name: preview-hub
+      rules:
+        # absent 는 파드/수집 대상 자체가 없어 up 시계열이 사라진 경우도 잡는다.
+        - alert: PreviewHubDown
+          expr: |
+            up{job="preview-hub/hub"} == 0
+            or absent(up{job="preview-hub/hub"})
+          for: 5m
+          labels: { severity: critical, namespace: preview-hub }
+          annotations:
+            summary: "preview-hub 지표를 5분째 못 읽는다"
+            description: "hub 프로세스가 내려가면 대시보드 · API · bot 이 멈춘다. hub 파드와 지표 포트 9100 · PodMonitor hub 를 확인한다."
+        - alert: PreviewHubGcStale
+          expr: time() - phub_gc_last_success_timestamp_seconds{namespace="preview-hub"} > 3 * 900
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "preview-hub GC 가 45분 넘게 성공하지 못한 상태가 10분째 이어진다"
+            description: "GC 주기는 900초다. GC 는 오래 멈춘 작업 복구와 TTL 만료 정리도 담당하므로 hub 의 GC 로그와 마지막 성공 시각을 확인한다."
+        - alert: PreviewHubOpStuck
+          expr: phub_operation_running_oldest_seconds{namespace="preview-hub"} > 1800
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "preview-hub 작업이 30분 넘게 RUNNING 인 상태가 5분째 이어진다"
+            description: "생성/갱신 작업이 30분 넘게 RUNNING 이라 ai-qa 와 대시보드가 기다리고 있다. hub 작업 상태와 실행 로그를 확인한다."

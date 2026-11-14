@@ -15,5 +15,5 @@ spec:
         - https://portfolio.cafitac.com
         - https://interview.cafitac.com
         - https://gather.cafitac.com
-        # Cloudflare Access 로그인 페이지로 넘어간다 — 따라가서 200 이면 터널은 산 것이다
+        # Cloudflare Access 를 통한 터널만 확인한다 — hub 상태 경보는 apps/preview-hub/monitoring.yaml
         - https://preview-hub.cafitac.com

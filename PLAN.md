@@ -250,7 +250,7 @@ homelab/
 - ⭐ 새 서비스에 `hostPort` · `LoadBalancer` · `NodePort` 를 쓰지 않는다. 유일한 예외는 preview-hub 레지스트리의 `hostPort: 5000, hostIP: 127.0.0.1`(iptables 만, lima 가 넘기지 않음을 확인) — 같은 경로로 Mac 밖에 열린다. 외부 노출은 오직 cloudflared → Traefik(ClusterIP) → Ingress
 - colima 쪽 기존 VM(thread-example 등)도 0.0.0.0 으로 여는 포트가 있다(3000 · 8080 · 9090 등). 그 프로젝트를 옮길 때 함께 정리한다
 
-- preview-hub 의 ClusterRole 은 클러스터 전체 namespace · 배포 객체 권한이다(RBAC 은 이름 접두사로 못 좁힌다). 러너는 소유 라벨로만 지우지만, hub 가 뚫리면 다른 namespace 도 바꿀 수 있다 → ValidatingAdmissionPolicy 로 hub 의 쓰기를 `phub-*` 로 제한하는 것을 검토한다
+- preview-hub 의 ClusterRole 은 클러스터 전체 namespace · 배포 객체 권한이다(RBAC 은 이름 접두사로 못 좁힌다). 러너는 소유 라벨로만 지우지만, hub 가 뚫리면 다른 namespace 도 바꿀 수 있다 → ValidatingAdmissionPolicy 로 hub 의 쓰기를 `phub-*` 로 제한하는 것을 검토한다 → `platform/admission/preview-hub-scope.yaml`(2026-11-14, 적용은 소유자 승인 후)
 
 ## 6. 미결 (정해야 할 것)
 

@@ -6,5 +6,6 @@ resources:
   - traefik/helmchartconfig.yaml
   - storage/local-path-retain.yaml
   - scheduling/priorityclass-preemptible.yaml
+  - admission/preview-hub-scope.yaml
   - cloudflared
   - registry-mirror

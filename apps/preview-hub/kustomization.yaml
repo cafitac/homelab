@@ -20,4 +20,4 @@ configMapGenerator:
   - name: catalog
     files: [catalog.yaml]
 images:
-  - { name: phub/hub, newTag: 46ab027771c9 }
+  - { name: phub/hub, newTag: 051f66c9d010 }

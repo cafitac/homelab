@@ -1,0 +1,20 @@
+# grow.cafitac.com — 「H 삼키며 자라기」 .io 웹 게임 시제품(cafitac/games 의 prototype/H_grow, 로컬 git 저장소).
+# Node 22 + ws 서버 한 프로세스가 클라이언트 정적 파일과 20Hz 서버 권위 시뮬을 같이 돈다. 목표 동시 접속 약 10 명.
+# ⭐ 공개 범위(소유자 결정 2026-11-14): 링크를 아는 누구나 — Cloudflare Access 없음. 그 대신 서버의 방어선이 비용 · 부하 상한이다
+#    (방 3 개 × 사람 10 명, IP 당 연결 3, 전체 연결 40, 메시지 속도 · 크기, Origin, 무입력 강퇴). 값은 config.yaml.
+# 저장 없음: PVC · Secret 이 없다. 방 상태는 프로세스 메모리에만 있어 replicas 1 · Recreate 다(재시작하면 판이 새로 시작된다).
+# 이미지 갱신: games 저장소에서 prototype/H_grow/deploy/release.sh(빌드 → 아래 newTag 를 main 에 커밋 → 반영 확인)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: grow
+resources:
+  - namespace.yaml
+  - quota.yaml
+  - config.yaml
+  - app.yaml
+  - egress.yaml
+components:
+  - ../../platform/components/isolation
+images:
+  - name: h-grow
+    newTag: "a0f87fbe8e16"

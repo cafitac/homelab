@@ -52,9 +52,9 @@ spec:
             - { name: state, mountPath: /state }
             - { name: src, mountPath: /src }
             - { name: catalog, mountPath: /etc/phub, readOnly: true }
-            # 파일 하나만 — /run/secrets 전체를 덮으면 ServiceAccount 토큰(/var/run/secrets/kubernetes.io = /run/…)
-            # 마운트 지점을 만들지 못해 컨테이너가 뜨지 않는다(2026-10-05)
-            - { name: github, mountPath: /run/secrets/github_token, subPath: github_token, readOnly: true }
+            # 디렉터리 마운트 — Secret 교체 시 kubelet 이 파일을 갱신한다(subPath 는 갱신되지 않는다)
+            # /run/secrets 밖에 두어 ServiceAccount 토큰(/var/run/secrets/kubernetes.io = /run/secrets/kubernetes.io) 마운트 지점을 가리지 않는다
+            - { name: github, mountPath: /run/phub-secrets/github, readOnly: true }
           resources:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { cpu: "2", memory: 1Gi }
@@ -86,6 +86,7 @@ metadata:
   name: hub-config
 data:
   PHUB_RUNNER: kubernetes
+  PHUB_GITHUB_TOKEN_FILE: /run/phub-secrets/github/github_token
   PHUB_BUILDKIT_ADDR: tcp://buildkitd:1234
   PHUB_REGISTRY: registry:5000
   PHUB_REGISTRY_PULL: localhost:5000

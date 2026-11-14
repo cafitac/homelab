@@ -17,4 +17,4 @@ components:
   - ../../platform/components/isolation
 images:
   - name: h-grow
-    newTag: "a0f87fbe8e16"
+    newTag: "b3f73ac1beda"

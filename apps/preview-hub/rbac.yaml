@@ -47,3 +47,27 @@ subjects:
   - kind: ServiceAccount
     name: hub
     namespace: preview-hub
+---
+# HL-5: hub 가 레지스트리 GC 템플릿(CronJob registry-gc)을 읽어 Job 을 만든다 — 이 namespace 안에서만.
+# Job 생성 · 삭제 권한은 위 ClusterRole 에 있고, platform 승인 정책이 registry-gc-* 이름만 허용한다
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hub-registry-gc
+rules:
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    resourceNames: [registry-gc]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hub-registry-gc
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hub-registry-gc
+subjects:
+  - kind: ServiceAccount
+    name: hub

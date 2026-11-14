@@ -12,6 +12,7 @@ resources:
   - registry.yaml
   - buildkitd.yaml
   - hub.yaml
+  - monitoring.yaml
 components:
   - ../../platform/components/isolation
 configMapGenerator:

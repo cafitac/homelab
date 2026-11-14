@@ -44,7 +44,7 @@ spec:
           envFrom: &env
             - configMapRef: { name: hub-config }
             - secretRef: { name: hub-access }
-          ports: [{ containerPort: 8080 }]
+          ports: [{ containerPort: 8080 }, { name: metrics, containerPort: 9100 }]
           readinessProbe:
             tcpSocket: { port: 8080 }
             periodSeconds: 10
@@ -62,6 +62,7 @@ spec:
           image: phub/hub
           imagePullPolicy: IfNotPresent
           command: [phub, bot]
+          # PHUB_METRICS_PORT 도 공유하지만 phub bot 은 지표 서버를 시작하지 않는다.
           envFrom: *env
           env:
             - { name: PHUB_HUB_EXEC, value: "" }
@@ -94,6 +95,7 @@ data:
   PHUB_PROXY_ADDRESS: traefik.kube-system.svc.cluster.local:80
   PHUB_PROXY_PORT: "80"
   PHUB_GC_INTERVAL: "900"
+  PHUB_METRICS_PORT: "9100"
   PHUB_BOT_INTERVAL: "20"
 ---
 apiVersion: v1

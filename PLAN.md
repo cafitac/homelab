@@ -240,6 +240,8 @@ homelab/
 | --- | --- |
 | 단일 노드 — VM 이 죽으면 전부 죽는다 | 지금도 같다(VM 여러 개지만 호스트 하나). VM 재시작 뒤 자동 복구를 0 단계 통과 기준으로 |
 | local-path PV 는 노드에 묶인다 | 단일 노드라 문제없다. 노드를 늘리게 되면 그때 다시 결정 |
+| preview-hub 레지스트리 정책이 단일 노드를 전제한다 | `apps/preview-hub/registry.yaml` 의 NetworkPolicy `registry-pull` 은 노드의 hostPort pull 을 `ipBlock: { cidr: 10.42.0.1/32 }`(이 노드 cni0 게이트웨이, 파드 CIDR 10.42.0.0/24)로만 허용한다(2026-11-14 실측, homelab#206). 노드를 늘리면 그 `from` 에 새 노드의 게이트웨이(`10.42.<n>.1/32`, `kubectl get node -o jsonpath='{.items[*].spec.podCIDR}'` 의 첫 주소)를 한 줄씩 더한다. 더하지 않으면 새 노드에서 프리뷰 이미지를 받지 못한다 |
+| preview-hub 레지스트리에 인증이 없다 | 접근은 hub · buildkitd · 노드 셋으로 좁혔다(homelab#206). push 전용 htpasswd 는 후속 — 클러스터에 다른 사용자(테넌트)나 노드가 생기면 다시 연다 |
 | 디스크 500GB 도 언젠가 찬다 | PVC 마다 상한 + 사용률 경보 규칙(수신처는 나중) |
 | 이전 중 데이터 유실 | DB 는 쓰기 정지 창 → dump → 복원 → 검증 → DNS. 옛 데이터는 6 단계까지 지우지 않는다 |
 | judge-board 공식 채점이 다른 서비스와 CPU 를 다툼 | 채점 Job 에 Guaranteed QoS · 채점 시간대에는 preview 환경 수를 줄인다(미결 1) |
@@ -250,7 +252,7 @@ homelab/
 - ⭐ 새 서비스에 `hostPort` · `LoadBalancer` · `NodePort` 를 쓰지 않는다. 유일한 예외는 preview-hub 레지스트리의 `hostPort: 5000, hostIP: 127.0.0.1`(iptables 만, lima 가 넘기지 않음을 확인) — 같은 경로로 Mac 밖에 열린다. 외부 노출은 오직 cloudflared → Traefik(ClusterIP) → Ingress
 - colima 쪽 기존 VM(thread-example 등)도 0.0.0.0 으로 여는 포트가 있다(3000 · 8080 · 9090 등). 그 프로젝트를 옮길 때 함께 정리한다
 
-- preview-hub 의 ClusterRole 은 클러스터 전체 namespace · 배포 객체 권한이다(RBAC 은 이름 접두사로 못 좁힌다). 러너는 소유 라벨로만 지우지만, hub 가 뚫리면 다른 namespace 도 바꿀 수 있다 → ValidatingAdmissionPolicy 로 hub 의 쓰기를 `phub-*` 로 제한하는 것을 검토한다 → `platform/admission/preview-hub-scope.yaml`(2026-11-14, 적용은 소유자 승인 후)
+- preview-hub 의 ClusterRole 은 클러스터 전체 namespace · 배포 객체 권한이다(RBAC 은 이름 접두사로 못 좁힌다). 러너는 소유 라벨로만 지우지만, hub 가 뚫리면 다른 namespace 도 바꿀 수 있다 → ValidatingAdmissionPolicy 로 hub 의 쓰기를 `phub-*` 로 제한하는 것을 검토한다 → `platform/admission/preview-hub-scope.yaml`(2026-11-14 적용, homelab#203)
 
 ## 6. 미결 (정해야 할 것)
 

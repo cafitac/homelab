@@ -39,6 +39,12 @@ spec:
   variables:
     - name: obj
       expression: "request.operation == 'DELETE' ? oldObject : object"
+    # HL-5: hub 가 preview-hub namespace 에서 레지스트리 GC Job(registry-gc-*)만 만들고 지운다
+    - name: registryGc
+      expression: >-
+        request.namespace == 'preview-hub' &&
+        request.resource.resource == 'jobs' &&
+        request.name.startsWith('registry-gc-')
   validations:
     - expression: >-
         request.resource.resource != 'namespaces' ||
@@ -48,10 +54,11 @@ spec:
         variables.obj.metadata.labels['dev.phub.managed'] == 'true')
       message: "preview-hub may only manage phub-* namespaces it owns"
     - expression: >-
+        variables.registryGc ||
         request.resource.resource == 'namespaces' || request.namespace.startsWith('phub-')
       message: "preview-hub may only manage resources in phub-* namespaces"
     - expression: >-
-        request.resource.resource == 'namespaces' ||
+        variables.registryGc || request.resource.resource == 'namespaces' ||
         (has(variables.obj.metadata.labels) &&
         'dev.phub.managed' in variables.obj.metadata.labels &&
         variables.obj.metadata.labels['dev.phub.managed'] == 'true')

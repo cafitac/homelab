@@ -15,5 +15,6 @@ spec:
         - https://portfolio.cafitac.com
         - https://interview.cafitac.com
         - https://gather.cafitac.com
+        - https://grow.cafitac.com/healthz
         # Cloudflare Access 를 통한 터널만 확인한다 — hub 상태 경보는 apps/preview-hub/monitoring.yaml
         - https://preview-hub.cafitac.com

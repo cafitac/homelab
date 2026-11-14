@@ -1,0 +1,23 @@
+# 서버 설정(전부 환경변수, 기본값은 서버 코드 server/server.js). 비밀값 없음.
+# ⚠️ 잠깐 값을 바꿔야 할 때(부하 측정 등)는 git 밖의 ConfigMap grow-overrides 를 만들고 파드를 다시 띄운다 —
+#    Deployment 가 이것 뒤에 optional 로 읽으므로 같은 키는 그쪽이 이긴다. 끝나면 지우고 다시 띄운다(Argo CD 는 그것을 모른다).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grow-config
+data:
+  PORT: "8080"
+  ALLOWED_ORIGINS: https://grow.cafitac.com
+  # CF-Connecting-IP 는 소켓 주소가 파드 대역(Traefik)일 때만 믿는다. 바깥은 cloudflared → Traefik(ClusterIP) 으로만 들어온다
+  TRUSTED_PROXIES: 10.42.0.0/16
+  MAX_ROOMS: "3"
+  MAX_HUMANS: "10"
+  TARGET_POP: "16"
+  MAX_PER_IP: "3"
+  MAX_CONNS: "40"
+  MSG_RATE: "40"
+  MSG_BURST: "60"
+  MAX_PAYLOAD: "512"
+  IDLE_KICK_S: "120"
+  JOIN_TIMEOUT_S: "5"
+  ROOM_IDLE_S: "60"

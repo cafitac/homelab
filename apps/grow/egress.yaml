@@ -1,0 +1,8 @@
+# 게임 서버는 밖으로 부를 곳이 없다(DNS 도 안 쓴다) — 나가는 연결을 모두 막는다. 받은 연결의 응답은 conntrack 이라 막히지 않는다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]

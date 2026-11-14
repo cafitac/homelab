@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grow
+spec:
+  # 방 상태가 프로세스 메모리에 있어 수평 확장할 수 없다. 교체할 때 옛 파드가 접속자에게 bye 를 보내고 내려간 뒤 새 파드가 뜬다
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: grow }
+  template:
+    metadata:
+      labels: { app: grow }
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      # 서버가 SIGTERM 에 접속자에게 bye 를 보내고 4 초 안에 끝난다
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000   # node:22-alpine 의 node 사용자
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: grow
+          image: h-grow
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: grow-config }
+            - configMapRef: { name: grow-overrides, optional: true }
+          ports: [{ containerPort: 8080, name: http }]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true   # 쓰는 디스크가 없다(로그는 stdout 뿐)
+            capabilities: { drop: [ALL] }
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8080 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 384Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grow
+spec:
+  type: ClusterIP
+  selector: { app: grow }
+  ports: [{ name: http, port: 80, targetPort: 8080 }]
+---
+# WebSocket(/ws)은 Traefik 이 HTTP/1.1 Upgrade 를 그대로 넘긴다 — 따로 설정이 없다. 바깥 → cloudflared → Traefik → 여기만.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grow
+spec:
+  rules:
+    - host: grow.cafitac.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: grow, port: { number: 80 } }

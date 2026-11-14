@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grow
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cafitac/homelab.git
+    targetRevision: main
+    path: apps/grow
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    # 데이터가 없으므로 prune 을 켠다(portfolio 와 같다)
+    automated: { prune: true, selfHeal: true }

@@ -1,0 +1,15 @@
+# 근거(games prototype/H_grow README §4, 2026-11-14 MacBook 부하 시험): 사람 10 + 봇 30 · 방 2 개에서 틱 CPU p95 2.2ms(예산 50ms),
+# RSS 66MB. 상한은 그 몇 배로 잡고, 방 수 상한(3)이 실사용 상한이다. Recreate 라 교체 중에 둘이 겹치지 않지만 한 개 여유를 둔다.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+spec:
+  hard:
+    requests.cpu: 500m
+    requests.memory: 512Mi
+    limits.cpu: "2"
+    limits.memory: 1Gi
+    persistentvolumeclaims: "0"
+    services.nodeports: "0"
+    services.loadbalancers: "0"

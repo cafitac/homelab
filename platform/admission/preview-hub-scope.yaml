@@ -1,0 +1,66 @@
+# preview-hub(apps/preview-hub)의 hub ServiceAccount 쓰기 범위. 클러스터 범위 객체라 platform 에 둔다.
+# RBAC 은 이름 접두사를 제한하지 못하므로 hub 의 쓰기를 admission 에서 한정한다.
+# hub 는 소유 라벨(dev.phub.managed=true)이 있는 phub-* namespace 와 그 안의 소유 리소스만 쓸 수 있다.
+# sync 후 확인: kubectl auth can-i 는 admission 을 평가하지 않는다. 아래 요청은 거부되어야 한다.
+# kubectl --as=system:serviceaccount:preview-hub:hub create ns not-phub --dry-run=server
+# 정상 경로(kubectl --as=system:serviceaccount:preview-hub:hub -n phub-x ...)는
+# scripts/phub-remote up / down e2e 로 생성 · 정리가 계속 동작하는지 확인한다.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: preview-hub-scope
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [namespaces, services, resourcequotas, persistentvolumeclaims]
+      - apiGroups: [apps]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [deployments, statefulsets]
+      - apiGroups: [batch]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [jobs]
+      - apiGroups: [networking.k8s.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [ingresses, networkpolicies]
+      - apiGroups: [traefik.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [middlewares]
+  matchConditions:
+    - name: preview-hub-serviceaccount
+      expression: "request.userInfo.username == 'system:serviceaccount:preview-hub:hub'"
+  variables:
+    - name: obj
+      expression: "request.operation == 'DELETE' ? oldObject : object"
+  validations:
+    - expression: >-
+        request.resource.resource != 'namespaces' ||
+        (request.name.startsWith('phub-') &&
+        has(variables.obj.metadata.labels) &&
+        'dev.phub.managed' in variables.obj.metadata.labels &&
+        variables.obj.metadata.labels['dev.phub.managed'] == 'true')
+      message: "preview-hub may only manage phub-* namespaces it owns"
+    - expression: >-
+        request.resource.resource == 'namespaces' || request.namespace.startsWith('phub-')
+      message: "preview-hub may only manage resources in phub-* namespaces"
+    - expression: >-
+        request.resource.resource == 'namespaces' ||
+        (has(variables.obj.metadata.labels) &&
+        'dev.phub.managed' in variables.obj.metadata.labels &&
+        variables.obj.metadata.labels['dev.phub.managed'] == 'true')
+      message: "preview-hub may only manage resources labelled dev.phub.managed=true"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: preview-hub-scope
+spec:
+  policyName: preview-hub-scope
+  validationActions: [Deny]

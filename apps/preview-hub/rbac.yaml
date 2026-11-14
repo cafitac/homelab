@@ -1,7 +1,8 @@
 # hub(+ bot 사이드카)가 프리뷰 환경 namespace phub-<env> 를 만들고 · 채우고 · 지운다.
 # ⚠️ RBAC 은 이름 접두사로 범위를 좁힐 수 없다 — 클러스터 전체 권한이다. 대신 러너가
 #    ① 소유 라벨(dev.phub.managed)이 붙은 namespace 만 지우고 ② 모든 조회 · 정리를 라벨로 한정한다.
-#    더 좁히려면 승인 정책(ValidatingAdmissionPolicy)으로 phub-* 밖의 쓰기를 막는다 — homelab PLAN 위험 항목
+#    platform/admission/preview-hub-scope.yaml 의 승인 정책(ValidatingAdmissionPolicy)이 쓰기를 소유한 phub-*
+#    namespace 와 그 안의 소유 리소스로 한정한다(클러스터 범위 객체라 namespace 를 붙이는 이 kustomization 밖에 둔다).
 apiVersion: v1
 kind: ServiceAccount
 metadata:

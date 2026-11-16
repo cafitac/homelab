@@ -72,10 +72,11 @@ spec:
           annotations:
             summary: "{{ $labels.host }} 디스크가 깨어 있는 시간 기준으로 곧 하한에 닿는다"
             description: "hostguard TIME_TO_FLOOR — 깨어 있는 동안의 감소 속도가 ttf_hours 안에 하한에 닿는다. 어제 같은 브라우저 프로필 누수가 이 모양이었다"
+        # (max by (host) 로 오래된 값 쪽 라벨을 absent 쪽과 같은 host 하나로 맞춘다 — 긁기가 한 번 비어도 같은 경보로 이어진다)
         # Mac Studio 는 늘 켜져 있다 — 표본이 2 시간 넘게 갱신되지 않았거나 아예 없으면 hostguard 작업 · textfile 내보내기 · 이 수집 경로 중 하나가 끊긴 것이다
         - alert: DevHostDiskGuardStale
           expr: |
-            (time() - hostguard_sample_timestamp_seconds{host="macstudio"} > 7200)
+            (max by (host) (time() - hostguard_sample_timestamp_seconds{host="macstudio"}) > 7200)
               or absent(hostguard_sample_timestamp_seconds{host="macstudio"})
           for: 30m
           labels: { severity: warning }

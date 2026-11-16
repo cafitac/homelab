@@ -2,6 +2,7 @@
 # 실행: python3 -m unittest monitoring/devhost_rules_test.py   필요: yq · kubectl(kustomize 렌더만) · docker(promtool 이 PATH 에 있으면 그것). CI: .github/workflows/devhost-rules.yml
 # 확인하는 것: promtool check/test rules(뜰 때 · 안 뜰 때 — 자는 MacBook 은 2 시간 뒤 풀린다), 규칙이 쓰는 지표가 hostguard textfile 이 실제로 내는 것인지, 수집 대상 · 거르기.
 import json
+import os
 import re
 from pathlib import Path
 import shutil
@@ -17,8 +18,9 @@ EXPORTED = {'hostguard_free_bytes', 'hostguard_floor_bytes', 'hostguard_time_to_
 GIB = 1 << 30
 
 
-def s(name, values, host):
-    return {'series': f'{name}{{host="{host}"}}', 'values': values}
+def s(name, values, host, **extra):
+    labels = ','.join(f'{k}="{v}"' for k, v in {'host': host, **extra}.items())
+    return {'series': f'{name}{{{labels}}}', 'values': values}
 
 
 def host_series(host, free_gib, ttf=0, ts='0+60x400'):
@@ -36,6 +38,7 @@ CASES = [
     # 하한(10GiB) 아래이고 표본이 신선하면 for 15m 뒤에 뜬다 · 위이면 조용하다
     (host_series('macbook', 5), [alert('DevHostDiskLow', '10m'), alert('DevHostDiskLow', '20m', 'macbook')]),
     (host_series('macbook', 11) + host_series('macstudio', 50), [alert('DevHostDiskLow', '60m')]),
+    (host_series('macbook', 10), [alert('DevHostDiskLow', '60m')]),  # 정확히 하한이면 조용하다 — hostguard BELOW_FLOOR 도 free < floor 다
     # 덮개를 닫은 MacBook — 마지막 표본이 2 시간 넘게 오래되면 같은 값이 남아 있어도 풀린다(경보가 아니다)
     (host_series('macbook', 5, ts=ASLEEP), [alert('DevHostDiskLow', '100m', 'macbook'), alert('DevHostDiskLow', '200m')]),
     # hostguard 가 계산한 TIME_TO_FLOOR 를 그대로 쓴다: 켜져 있으면 for 30m 뒤 · 꺼져 있으면 조용
@@ -51,11 +54,18 @@ CASES = [
     (host_series('macstudio', 50), [alert('DevHostDiskGuardStale', '300m')]),
     (host_series('macstudio', 50, ts=ASLEEP), [alert('DevHostDiskGuardStale', '200m'), alert('DevHostDiskGuardStale', '215m', 'macstudio')]),
     (host_series('macbook', 50), [alert('DevHostDiskGuardStale', '20m'), alert('DevHostDiskGuardStale', '35m', 'macstudio')]),
+    # 이미 뜬 오래됨 경보가 긁기 한 번(빈 파일 → stale)을 지나도 같은 경보로 이어진다 — 실제 수집은 job · instance 라벨이 붙고 absent 쪽에는 없다
+    ([s('hostguard_sample_timestamp_seconds', '0+60x60 3540x160 stale stale 3540x400', 'macstudio', job='hostguard-textfile', instance='host.lima.internal:9101')],
+     [alert('DevHostDiskGuardStale', '215m', 'macstudio'), alert('DevHostDiskGuardStale', '222m', 'macstudio'), alert('DevHostDiskGuardStale', '230m', 'macstudio')]),
 ]
 
 
+# 자식 프로세스 환경은 주는 것만 고정한다 — DOCKER_DEFAULT_PLATFORM · DOCKER_CONTEXT 같은 호출자 설정이 시험 결과를 바꾸지 않게 한다(DOCKER_HOST 는 colima 같은 전송 선택이라 남긴다)
+ENV = {**{k: os.environ[k] for k in ('PATH', 'HOME', 'TMPDIR', 'DOCKER_HOST') if k in os.environ}, 'LC_ALL': 'C', 'TZ': 'UTC'}
+
+
 def run(cmd, **kw):
-    p = subprocess.run(cmd, text=True, capture_output=True, **kw)
+    p = subprocess.run(cmd, text=True, capture_output=True, env=ENV, **kw)
     if p.returncode:
         raise AssertionError(f'{cmd[:4]} 실패({p.returncode}): {p.stdout[-3000:]}{p.stderr[-3000:]}')
     return p.stdout

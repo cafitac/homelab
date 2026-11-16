@@ -1,7 +1,8 @@
 # ai-sre 자기 관측(monitoring.yaml)을 클러스터 없이 검사한다. 실행: python3 -m unittest apps/ai-sre/monitoring_test.py
-# 필요: kubectl(kustomize 렌더만) · yq · docker(promtool 이 PATH 에 있으면 그것을 쓰고, 없으면 아래 고정 이미지). CI: .github/workflows/ai-sre-monitoring.yml
+# 필요: kubectl(kustomize 렌더만) · yq · docker(promtool 은 아래 고정 이미지에서 돈다 — 내 promtool 을 쓰려면 PROMTOOL=<경로> 를 명시). CI: .github/workflows/ai-sre-monitoring.yml
 # 확인하는 것: promtool check/test rules(경보가 뜨는 때 · 안 뜨는 때), 규칙이 쓰는 지표 이름이 ai-sre 가 실제로 내는 것인지, PodMonitor 가 고르는 포트.
 import json
+import os
 import re
 from pathlib import Path
 import shutil
@@ -95,9 +96,12 @@ class MonitoringTest(unittest.TestCase):
         for tool in ('kubectl', 'yq'):
             if not shutil.which(tool):
                 raise RuntimeError(f'필수 도구 없음: {tool}')
-        cls.local_promtool = shutil.which('promtool')
+        # PATH 의 promtool 은 판이 제각각이라(keep_firing_for 는 2.42+) 쓰지 않는다 — 고정 이미지(CI 와 같다)가 기본이고, 내 것은 PROMTOOL 로 명시할 때만 쓴다
+        cls.local_promtool = os.environ.get('PROMTOOL')
+        if cls.local_promtool and not shutil.which(cls.local_promtool):
+            raise RuntimeError(f'PROMTOOL 을 실행할 수 없다: {cls.local_promtool}')
         if not cls.local_promtool and not shutil.which('docker'):
-            raise RuntimeError('필수 도구 없음: promtool 또는 docker')
+            raise RuntimeError('docker 가 없다 — 고정 이미지로 promtool 을 돌릴 수 없다. 내 promtool 을 쓰려면 PROMTOOL=<경로> 를 명시한다(판이 달라 결과가 CI 와 다를 수 있다)')
         out = run(['kubectl', 'kustomize', 'apps/ai-sre'], cwd=ROOT)
         cls.docs = [json.loads(line) for line in run(['yq', '-o=json', '-I=0', '.'], input=out).splitlines() if line.strip()]
         [cls.rule] = [d for d in cls.docs if d['kind'] == 'PrometheusRule']

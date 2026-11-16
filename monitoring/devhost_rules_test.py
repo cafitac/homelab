@@ -1,5 +1,5 @@
 # 개발 호스트 디스크 규칙(monitoring/rules.yaml 의 homelab.devhost)과 수집 설정(hostguard-scrape.yaml)을 클러스터 없이 검사한다.
-# 실행: python3 -m unittest monitoring/devhost_rules_test.py   필요: yq · kubectl(kustomize 렌더만) · docker(promtool 이 PATH 에 있으면 그것). CI: .github/workflows/devhost-rules.yml
+# 실행: python3 -m unittest monitoring/devhost_rules_test.py   필요: yq · kubectl(kustomize 렌더만) · docker(promtool 은 아래 고정 이미지에서 돈다 — 내 promtool 을 쓰려면 PROMTOOL=<경로> 를 명시). CI: .github/workflows/devhost-rules.yml
 # 확인하는 것: promtool check/test rules(뜰 때 · 안 뜰 때 — 자는 MacBook 은 2 시간 뒤 풀린다), 규칙이 쓰는 지표가 hostguard textfile 이 실제로 내는 것인지, 수집 대상 · 거르기.
 import json
 import os
@@ -81,9 +81,12 @@ class DevHostRulesTest(unittest.TestCase):
         for tool in ('yq', 'kubectl'):
             if not shutil.which(tool):
                 raise RuntimeError(f'필수 도구 없음: {tool}')
-        cls.local_promtool = shutil.which('promtool')
+        # PATH 의 promtool 은 판이 제각각이라(keep_firing_for 는 2.42+) 쓰지 않는다 — 고정 이미지(CI 와 같다)가 기본이고, 내 것은 PROMTOOL 로 명시할 때만 쓴다
+        cls.local_promtool = os.environ.get('PROMTOOL')
+        if cls.local_promtool and not shutil.which(cls.local_promtool):
+            raise RuntimeError(f'PROMTOOL 을 실행할 수 없다: {cls.local_promtool}')
         if not cls.local_promtool and not shutil.which('docker'):
-            raise RuntimeError('필수 도구 없음: promtool 또는 docker')
+            raise RuntimeError('docker 가 없다 — 고정 이미지로 promtool 을 돌릴 수 없다. 내 promtool 을 쓰려면 PROMTOOL=<경로> 를 명시한다(판이 달라 결과가 CI 와 다를 수 있다)')
         [rule] = to_json((ROOT / 'monitoring/rules.yaml').read_text())
         [group] = [g for g in rule['spec']['groups'] if g['name'] == 'homelab.devhost']
         cls.rules = {r['alert']: r for r in group['rules']}
@@ -117,6 +120,26 @@ class DevHostRulesTest(unittest.TestCase):
             tests.append({'interval': '1m', 'input_series': series, 'alert_rule_test': checks})
         (self.tmp / 'tests.yaml').write_text(json.dumps({'rule_files': ['logic.yaml'], 'evaluation_interval': '1m', 'tests': tests}))
         self.assertIn('SUCCESS', self.promtool('test', 'rules', 'tests.yaml'))
+
+    def test_freshness_edge_is_exactly_7200_seconds(self):
+        # 규칙 식 그대로를 경계에서 직접 본다: ASLEEP 의 표본 시각은 3540 이라 178 분에 나이 7140 초 · 179 분에 정확히 7200 초 · 180 분에 7260 초다
+        # 신선함은 < 7200 이라 179 분에 사라지고, 오래됨은 > 7200 이라 179 분에도 아직 아니다 — 부등호가 <= · >= 로 바뀌면 179 분이 달라진다
+        def expr_test(name, at, *samples):
+            return {'expr': self.rules[name]['expr'], 'eval_time': at,
+                    'exp_samples': [{'labels': lbl, 'value': v} for lbl, v in samples]}
+        low = 'hostguard_free_bytes{host="macbook"}'
+        up = 'hostguard_time_to_floor_active{host="macbook"}'
+        stale = '{host="macstudio"}'
+        tests = [
+            {'interval': '1m', 'input_series': host_series('macbook', 5, ttf=1, ts=ASLEEP), 'promql_expr_test': [
+                expr_test('DevHostDiskLow', '178m', (low, 5 * GIB)), expr_test('DevHostDiskLow', '179m'),
+                expr_test('DevHostDiskFillingUp', '178m', (up, 1)), expr_test('DevHostDiskFillingUp', '179m')]},
+            {'interval': '1m', 'input_series': host_series('macstudio', 50, ts=ASLEEP), 'promql_expr_test': [
+                expr_test('DevHostDiskGuardStale', '178m'), expr_test('DevHostDiskGuardStale', '179m'),
+                expr_test('DevHostDiskGuardStale', '180m', (stale, 7260))]},
+        ]
+        (self.tmp / 'edge.yaml').write_text(json.dumps({'rule_files': ['logic.yaml'], 'evaluation_interval': '1m', 'tests': tests}))
+        self.assertIn('SUCCESS', self.promtool('test', 'rules', 'edge.yaml'))
 
     def test_rules_use_only_exported_metrics(self):
         used = set()

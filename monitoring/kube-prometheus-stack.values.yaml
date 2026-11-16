@@ -66,11 +66,11 @@ alertmanager:
         # 하트비트 · 차트의 억제용 경보는 어디로도 보내지 않는다
         - receiver: "null"
           matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
-        # 이 저장소의 규칙(monitoring/rules.yaml · apps/interview-coach/monitoring.yaml) — severity 는 critical · warning 두 가지뿐이다
+        # 이 저장소의 규칙(monitoring/rules.yaml · apps/interview-coach/monitoring.yaml; DevHostDisk.* 는 개발 호스트 디스크) — severity 는 critical · warning 두 가지뿐이다
         - receiver: discord
           matchers:
             - severity =~ "critical|warning"
-            - alertname =~ "InterviewCoach.*|NodeDataDisk.*|PrometheusStorageNearRetentionSize|PublicSiteDown|NodeClockNotSynchronising"
+            - alertname =~ "InterviewCoach.*|NodeDataDisk.*|DevHostDisk.*|PrometheusStorageNearRetentionSize|PublicSiteDown|NodeClockNotSynchronising"
         # 우리 앱 namespace 에서 난 차트 기본 경보(CrashLoop · 파드 미준비 등) — 그 밖의 차트 기본 경보는 기본 수신처 null
         - receiver: discord
           matchers:

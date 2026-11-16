@@ -46,3 +46,40 @@ spec:
           labels: { severity: critical }
           annotations:
             summary: "{{ $labels.instance }} 가 밖에서 열리지 않는다"
+    - name: homelab.devhost
+      rules:
+        # 개발 호스트(MacBook · Mac Studio)의 디스크 — agent-skills hostguard 가 15 분마다 쓰는 textfile 지표(monitoring/hostguard-scrape.yaml)다.
+        # 11/14 MacBook 디스크가 차 검증이 ENOSPC 로 세 번 죽었다. 파일은 마지막 값을 그대로 들고 있어서(호스트가 자도 값이 남는다) 표본 시각이 2 시간 안일 때만 본다 —
+        # 덮개를 닫은 MacBook 은 경보가 아니다(plan R3). 하한 · 증가 판단은 hostguard 가 한 것을 그대로 쓴다(여기에 숫자를 따로 두지 않는다)
+        - alert: DevHostDiskLow
+          expr: |
+            hostguard_free_bytes < hostguard_floor_bytes
+              and on(host) (time() - hostguard_sample_timestamp_seconds < 7200)
+          for: 15m
+          # textfile 이 다시 쓰이는 찰나(truncate 뒤 쓰기)에 긁힌 한 번이 경보를 풀었다 다시 띄우지 않게 한다 — 해소 · 재발 알림 쌍을 막는다
+          keep_firing_for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{ $labels.host }} 디스크 여유 {{ $value | humanize1024 }}B — hostguard 하한 아래"
+            description: "무거운 검증은 이미 거부된다. hostguard report(해당 호스트)로 무엇이 차지하는지 보고, 정리는 사람이 한다"
+        - alert: DevHostDiskFillingUp
+          expr: |
+            hostguard_time_to_floor_active == 1
+              and on(host) (time() - hostguard_sample_timestamp_seconds < 7200)
+          for: 30m
+          keep_firing_for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $labels.host }} 디스크가 깨어 있는 시간 기준으로 곧 하한에 닿는다"
+            description: "hostguard TIME_TO_FLOOR — 깨어 있는 동안의 감소 속도가 ttf_hours 안에 하한에 닿는다. 어제 같은 브라우저 프로필 누수가 이 모양이었다"
+        # (max by (host) 로 오래된 값 쪽 라벨을 absent 쪽과 같은 host 하나로 맞춘다 — 긁기가 한 번 비어도 같은 경보로 이어진다)
+        # Mac Studio 는 늘 켜져 있다 — 표본이 2 시간 넘게 갱신되지 않았거나 아예 없으면 hostguard 작업 · textfile 내보내기 · 이 수집 경로 중 하나가 끊긴 것이다
+        - alert: DevHostDiskGuardStale
+          expr: |
+            (max by (host) (time() - hostguard_sample_timestamp_seconds{host="macstudio"}) > 7200)
+              or absent(hostguard_sample_timestamp_seconds{host="macstudio"})
+          for: 30m
+          labels: { severity: warning }
+          annotations:
+            summary: "Mac Studio hostguard 표본이 2 시간 넘게 갱신되지 않았거나 수집되지 않는다"
+            description: "Studio 의 dev.cafitac.hostguard · dev.cafitac.hostguard-textfile(launchd) · export.mode 플래그 · up{job=\"hostguard-textfile\"} 를 차례로 본다"

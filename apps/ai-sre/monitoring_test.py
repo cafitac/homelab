@@ -83,8 +83,12 @@ CASES = [
 ]
 
 
+# 자식 프로세스 환경은 주는 것만 고정한다 — DOCKER_DEFAULT_PLATFORM · DOCKER_CONTEXT 같은 호출자 설정이 시험 결과를 바꾸지 않게 한다(DOCKER_HOST 는 colima 같은 전송 선택이라 남긴다)
+ENV = {**{k: os.environ[k] for k in ('PATH', 'HOME', 'TMPDIR', 'DOCKER_HOST') if k in os.environ}, 'LC_ALL': 'C', 'TZ': 'UTC'}
+
+
 def run(cmd, **kw):
-    p = subprocess.run(cmd, text=True, capture_output=True, **kw)
+    p = subprocess.run(cmd, text=True, capture_output=True, env=ENV, **kw)
     if p.returncode:
         raise AssertionError(f'{cmd[:4]} 실패({p.returncode}): {p.stdout[-3000:]}{p.stderr[-3000:]}')
     return p.stdout

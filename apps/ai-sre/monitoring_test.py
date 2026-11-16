@@ -97,9 +97,11 @@ class MonitoringTest(unittest.TestCase):
             if not shutil.which(tool):
                 raise RuntimeError(f'필수 도구 없음: {tool}')
         # PATH 의 promtool 은 판이 제각각이라(keep_firing_for 는 2.42+) 쓰지 않는다 — 고정 이미지(CI 와 같다)가 기본이고, 내 것은 PROMTOOL 로 명시할 때만 쓴다
-        cls.local_promtool = os.environ.get('PROMTOOL')
-        if cls.local_promtool and not shutil.which(cls.local_promtool):
-            raise RuntimeError(f'PROMTOOL 을 실행할 수 없다: {cls.local_promtool}')
+        override = os.environ.get('PROMTOOL')
+        # 절대 경로로 바꿔 둔다 — promtool 은 임시 디렉터리를 cwd 로 돌므로 상대 경로(./tools/promtool)는 거기서 가리키는 곳이 달라진다
+        cls.local_promtool = override and shutil.which(override) and os.path.abspath(shutil.which(override))
+        if override and not cls.local_promtool:
+            raise RuntimeError(f'PROMTOOL 을 실행할 수 없다: {override}')
         if not cls.local_promtool and not shutil.which('docker'):
             raise RuntimeError('docker 가 없다 — 고정 이미지로 promtool 을 돌릴 수 없다. 내 promtool 을 쓰려면 PROMTOOL=<경로> 를 명시한다(판이 달라 결과가 CI 와 다를 수 있다)')
         out = run(['kubectl', 'kustomize', 'apps/ai-sre'], cwd=ROOT)

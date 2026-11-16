@@ -1,0 +1,35 @@
+# 개발 호스트 디스크 규칙 검사 — monitoring/rules.yaml 의 homelab.devhost 를 promtool check · test rules 로 돌리고(뜰 때 · 안 뜰 때),
+# 규칙이 hostguard 가 내는 지표만 쓰는지, hostguard-scrape.yaml 이 kustomize 로 렌더되는지 본다. 클러스터에는 닿지 않는다.
+# 러너에 깔린 kubectl(kustomize 만) · yq · docker 를 쓴다. promtool 은 테스트가 고정한 prometheus 이미지(digest)에서 돌린다.
+name: devhost-rules
+
+on:
+  pull_request:
+    paths:
+      - monitoring/rules.yaml
+      - monitoring/hostguard-scrape.yaml
+      - monitoring/kustomization.yaml
+      - monitoring/devhost_rules_test.py
+      - .github/workflows/devhost-rules.yml
+  push:
+    branches: [main]
+    paths:
+      - monitoring/rules.yaml
+      - monitoring/hostguard-scrape.yaml
+      - monitoring/kustomization.yaml
+      - monitoring/devhost_rules_test.py
+      - .github/workflows/devhost-rules.yml
+
+permissions:
+  contents: read
+
+jobs:
+  rules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - run: kubectl version --client && yq --version && docker version --format '{{.Server.Version}}'
+      - run: python3 -m unittest -v monitoring/devhost_rules_test.py

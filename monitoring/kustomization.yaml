@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - probes.yaml
+  - hostguard-scrape.yaml
   - rules.yaml
   - triage-reader.yaml
 # 대시보드 — Grafana 사이드카가 라벨 grafana_dashboard=1 인 ConfigMap 을 읽는다(이 namespace 만)

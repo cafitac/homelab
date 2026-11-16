@@ -1,0 +1,20 @@
+# Mac Studio 호스트의 hostguard textfile 지표 수집(agent-skills hostguard, 계획 HG6). 호스트의 node_exporter(textfile 수집기만, 127.0.0.1:9101, launchd dev.cafitac.hostguard-textfile)를
+# colima VM 의 Prometheus 가 host.lima.internal 로 긁는다 — VM 에서 호스트의 loopback 으로 닿는다(2026-11-16 블랙박스로 파드에서 확인). 호스트 포트 9100 은 VM node-exporter 의 포워드라 쓰지 않는다.
+# 켜는 순서는 소유자 몫(OG-DEPLOY): Studio 에 node_exporter 를 먼저 올리고, 그 뒤 이 변경을 반영한다 — 반영만 하면 up=0 이고 DevHostDiskGuardStale 이 30 분 뒤 울린다.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: hostguard-textfile
+  namespace: monitoring
+  # Prometheus 의 scrapeConfigSelector 가 release=kps 를 고른다(Prometheus CR 은 바꾸지 않는다)
+  labels: { release: kps }
+spec:
+  jobName: hostguard-textfile
+  scrapeInterval: 60s
+  staticConfigs:
+    - targets: ["host.lima.internal:9101"]
+  # node_exporter 자체 지표(go_* · process_*)는 버리고 우리 지표와 textfile 자기 점검만 둔다
+  metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: "hostguard_.*|node_textfile_.*"
+      action: keep

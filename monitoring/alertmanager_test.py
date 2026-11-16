@@ -23,6 +23,11 @@ CASES = [
     ({'alertname': 'KubePodCrashLooping', 'severity': 'warning', 'namespace': 'judge-board'}, ['ai-sre', 'discord']),
     ({'alertname': 'PublicSiteDown', 'severity': 'critical', 'instance': 'https://gather.cafitac.com'}, ['ai-sre', 'discord']),
     ({'alertname': 'NodeDataDiskFillingUp', 'severity': 'warning'}, ['ai-sre', 'discord']),
+    # HG6 — 개발 호스트 디스크(라벨에 namespace 가 없다): ai-sre 사본 + Discord. info 이하는 버린다
+    ({'alertname': 'DevHostDiskLow', 'severity': 'critical', 'host': 'macbook'}, ['ai-sre', 'discord']),
+    ({'alertname': 'DevHostDiskFillingUp', 'severity': 'warning', 'host': 'macbook'}, ['ai-sre', 'discord']),
+    ({'alertname': 'DevHostDiskGuardStale', 'severity': 'warning', 'host': 'macstudio'}, ['ai-sre', 'discord']),
+    ({'alertname': 'DevHostDiskLow', 'severity': 'info', 'host': 'macbook'}, ['null']),
     ({'alertname': 'KubePodCrashLooping', 'severity': 'warning', 'namespace': 'kube-system'}, ['ai-sre']),
     ({'alertname': 'KubePodNotReady', 'severity': 'info', 'namespace': 'interview-coach'}, ['null']),
     ({'alertname': 'Watchdog', 'severity': 'none'}, ['null']),
@@ -37,8 +42,9 @@ CASES = [
     ({'alertname': 'AlertmanagerFailedToSendAlerts', 'severity': 'warning', 'namespace': 'monitoring', 'integration': 'webhook'}, ['null']),
 ]
 # ai-sre 경로 · 수신처를 뺀 설정(경로 · Discord 수신처 · 묶음 · 억제 · 템플릿)의 지문 — main 28de702 를 렌더해 얻은 값이다.
-# Discord 쪽을 일부러 바꿀 때만 고친다(검사 대상과 독립된 기준). B9b 의 AiSre 경로도 빼고 계산하므로 값은 그대로다
-BASELINE_SHA256 = '8dd2b917a9d205cb26704607dcf66d5d75b30796e4009b6bcc8842d0eaae4f4e'
+# Discord 쪽을 일부러 바꿀 때만 고친다(검사 대상과 독립된 기준). B9b 의 AiSre 경로도 빼고 계산하므로 값은 그대로다.
+# HG6 에서 한 번 고쳤다 — Discord 경로의 alertname 정규식에 DevHostDisk.* 만 더했다(이전 값 8dd2b917…, 그 줄만 되돌리면 이전 값이 나온다)
+BASELINE_SHA256 = '7221a8b1a20643e0cb993f26c9bb31010d098520896ee29c3c4e8127e6f69d65'
 # 렌더된 Alertmanager CR 전체의 지문(main 361050d). 같으면 오퍼레이터가 파드를 다시 만들 일이 없다 — 설정 Secret 만 바뀐다
 ALERTMANAGER_CR_SHA256 = '7ceb9570d388931f2e1c40d89b51e6e43b64958858b5138bf91cb0a8bec20bf3'
 AI_SRE_OWN_ROUTE = {'receiver': 'discord', 'matchers': ['severity =~ "critical|warning"', 'alertname =~ "AiSre.*"']}

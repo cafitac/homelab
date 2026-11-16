@@ -41,6 +41,12 @@ CASES = [
     # hostguard 가 계산한 TIME_TO_FLOOR 를 그대로 쓴다: 켜져 있으면 for 30m 뒤 · 꺼져 있으면 조용
     (host_series('macbook', 50, ttf=1), [alert('DevHostDiskFillingUp', '20m'), alert('DevHostDiskFillingUp', '40m', 'macbook')]),
     (host_series('macbook', 50, ttf=0), [alert('DevHostDiskFillingUp', '60m')]),
+    # 자는 MacBook 은 TIME_TO_FLOOR=1 을 파일에 남긴 채여도 2 시간 뒤 풀린다(신선도 조건이 빠지면 여기서 걸린다)
+    (host_series('macbook', 50, ttf=1, ts=ASLEEP), [alert('DevHostDiskFillingUp', '100m', 'macbook'), alert('DevHostDiskFillingUp', '200m')]),
+    # textfile 을 다시 쓰는 찰나에 긁힌 한 번(스크레이프가 빈 파일을 봐 시계열이 2 분 stale)이 이미 뜬 경보를 풀었다 다시 띄우지 않는다
+    ([s(n, v, 'macbook') for n, v in (('hostguard_free_bytes', f'{5 * GIB}x30 stale stale {5 * GIB}x400'), ('hostguard_floor_bytes', f'{10 * GIB}x400'),
+                                      ('hostguard_sample_timestamp_seconds', '0+60x400'))],
+     [alert('DevHostDiskLow', '29m', 'macbook'), alert('DevHostDiskLow', '32m', 'macbook'), alert('DevHostDiskLow', '40m', 'macbook')]),
     # Studio: 신선하면 조용 · 표본이 멈추면 179 분 뒤 + for 30m · 아예 없으면(내보내기 · 수집 끊김) for 30m 뒤. MacBook 의 부재는 경보가 아니다
     (host_series('macstudio', 50), [alert('DevHostDiskGuardStale', '300m')]),
     (host_series('macstudio', 50, ts=ASLEEP), [alert('DevHostDiskGuardStale', '200m'), alert('DevHostDiskGuardStale', '215m', 'macstudio')]),
@@ -90,6 +96,7 @@ class DevHostRulesTest(unittest.TestCase):
         self.assertIn('SUCCESS', self.promtool('check', 'rules', 'rules.yaml'))
         self.assertEqual({n: r['labels']['severity'] for n, r in self.rules.items()},
                          {'DevHostDiskLow': 'critical', 'DevHostDiskFillingUp': 'warning', 'DevHostDiskGuardStale': 'warning'})
+        self.assertEqual({n for n, r in self.rules.items() if r.get('keep_firing_for')}, {'DevHostDiskLow', 'DevHostDiskFillingUp'})
 
     def test_promtool_unit_tests(self):
         tests = []

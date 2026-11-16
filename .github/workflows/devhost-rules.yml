@@ -32,4 +32,4 @@ jobs:
         with:
           persist-credentials: false
       - run: kubectl version --client && yq --version && docker version --format '{{.Server.Version}}'
-      - run: python3 -m unittest -v monitoring/devhost_rules_test.py
+      - run: python3 -m unittest -v --durations=5 monitoring/devhost_rules_test.py

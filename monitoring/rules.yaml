@@ -56,6 +56,8 @@ spec:
             hostguard_free_bytes < hostguard_floor_bytes
               and on(host) (time() - hostguard_sample_timestamp_seconds < 7200)
           for: 15m
+          # textfile 이 다시 쓰이는 찰나(truncate 뒤 쓰기)에 긁힌 한 번이 경보를 풀었다 다시 띄우지 않게 한다 — 해소 · 재발 알림 쌍을 막는다
+          keep_firing_for: 5m
           labels: { severity: critical }
           annotations:
             summary: "{{ $labels.host }} 디스크 여유 {{ $value | humanize1024 }}B — hostguard 하한 아래"
@@ -65,6 +67,7 @@ spec:
             hostguard_time_to_floor_active == 1
               and on(host) (time() - hostguard_sample_timestamp_seconds < 7200)
           for: 30m
+          keep_firing_for: 5m
           labels: { severity: warning }
           annotations:
             summary: "{{ $labels.host }} 디스크가 깨어 있는 시간 기준으로 곧 하한에 닿는다"

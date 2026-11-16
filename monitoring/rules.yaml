@@ -81,5 +81,5 @@ spec:
           for: 30m
           labels: { severity: warning }
           annotations:
-            summary: "Mac Studio hostguard 표본이 2 시간 넘게 없다"
+            summary: "Mac Studio hostguard 표본이 2 시간 넘게 갱신되지 않았거나 수집되지 않는다"
             description: "Studio 의 dev.cafitac.hostguard · dev.cafitac.hostguard-textfile(launchd) · export.mode 플래그 · up{job=\"hostguard-textfile\"} 를 차례로 본다"
